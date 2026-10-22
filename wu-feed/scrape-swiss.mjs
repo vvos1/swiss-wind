@@ -27,6 +27,23 @@ export function parseSmn(txt) {
   const last = rows[rows.length - 1];
   return { ...last, hist: rows.slice(-13).map(r => ({ ts: r.ts, avg: r.avg })) };
 }
+// SLF IMIS (snow/avalanche stations, many with wind): 30-minute means, speed in m/s -> km/h
+export function parseImis(recs) {
+  const rows = (recs || []).filter(r => r.VW_30MIN_MEAN != null && r.measure_date);
+  if (!rows.length) return null;
+  const l = rows[rows.length - 1];
+  return { ts: Date.parse(l.measure_date), avg: l.VW_30MIN_MEAN * 3.6, gust: l.VW_30MIN_MAX == null ? null : l.VW_30MIN_MAX * 3.6, dir: l.DW_30MIN_MEAN ?? null, temp: l.TA_30MIN_MEAN ?? null };
+}
+// METAR (aviationweather.gov): speed in knots -> km/h, newest report per airport
+export function parseMetar(list) {
+  const best = new Map();
+  for (const m of list || []) {
+    if (!/, CH$/.test(m.name || "") || m.wspd == null || !m.obsTime) continue;
+    if (!best.has(m.icaoId) || m.obsTime > best.get(m.icaoId).obsTime) best.set(m.icaoId, m);
+  }
+  return [...best.values()].map(m => ({ id: m.icaoId, name: m.name.replace(/, CH$/, "").replace(/, [A-Z]{2}$/, ""), lat: m.lat, lon: m.lon, alt: m.elev ?? null,
+    ts: m.obsTime * 1000, avg: m.wspd * 1.852, gust: m.wgst == null ? null : m.wgst * 1.852, dir: typeof m.wdir === "number" ? m.wdir : null, temp: m.temp ?? null }));
+}
 async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) await fn(items[i++]); })); }
 const getText = async (u, dec) => { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error("HTTP " + r.status); return new TextDecoder(dec || "utf-8").decode(await r.arrayBuffer()); };
 
@@ -47,8 +64,19 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-swiss.mjs")) {
       .map(d => ({ id: d.id, name: (d.meta && d.meta.name) || ("Pioupiou " + d.id), lat: d.location.latitude, lon: d.location.longitude,
         ts: Date.parse(d.measurements.date), avg: d.measurements.wind_speed_avg, gust: d.measurements.wind_speed_max, dir: d.measurements.wind_heading }));
   } catch (e) { failed.push("pioupiou:" + e.message); }
+  const slf = [];
+  try {
+    const sts = JSON.parse(await getText("https://measurement-api.slf.ch/public/api/imis/stations")).filter(x => x.country_code === "CH" || !x.country_code);
+    await pool(sts, 8, async st => {
+      try { const d = parseImis(JSON.parse(await getText(`https://measurement-api.slf.ch/public/api/imis/station/${st.code}/measurements`))); if (d) slf.push({ code: st.code, name: st.label, lat: st.lat, lon: st.lon, alt: st.elevation, ...d }); }
+      catch (e) { failed.push("slf " + st.code + ":" + e.message); }
+    });
+  } catch (e) { failed.push("slf:" + e.message); }
+  let metar = [];
+  try { metar = parseMetar(JSON.parse(await getText(`https://aviationweather.gov/api/data/metar?bbox=${CH_BBOX.s},${CH_BBOX.w},${CH_BBOX.n},${CH_BBOX.e}&format=json&hours=3`))); }
+  catch (e) { failed.push("metar:" + e.message); }
   if (!smn.length && !piou.length) throw new Error("nothing fetched: " + failed.slice(0, 5).join("; "));
-  await writeFile(out + ".tmp", JSON.stringify({ generated: Date.now(), smn, piou }));
+  await writeFile(out + ".tmp", JSON.stringify({ generated: Date.now(), smn, piou, slf, metar }));
   await rename(out + ".tmp", out);
-  console.log(new Date().toISOString(), `SWISS meteoswiss=${smn.length}/${stations.length} openwindmap=${piou.length}`, failed.length ? "failed: " + failed.slice(0, 8).join("; ") : "");
+  console.log(new Date().toISOString(), `SWISS meteoswiss=${smn.length}/${stations.length} openwindmap=${piou.length} slf=${slf.length} metar=${metar.length}`, failed.length ? "failed: " + failed.slice(0, 8).join("; ") : "");
 }

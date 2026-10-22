@@ -92,6 +92,7 @@ if (typeof L === "undefined") {
   throw new Error("Leaflet not loaded");
 }
 /* ============ CONFIG ============ */
+const staleLimit = s => s.staleMin || STALE_MIN;   // slower sources (airport METAR, SLF 30-min means) get a longer allowance
 const STALE_MIN = 40;            // greyed out when older than this
 const REFRESH_MS = 2 * 60 * 1000;    // re-poll every 2 min (MeteoSwiss itself updates every 10 min; wu.json about every 5)
 const PIOU_BBOX = {s:45.8, n:47.85, w:5.9, e:10.55};   // OpenWindMap beacons inside this box are picked up automatically
@@ -347,6 +348,8 @@ async function loadSwissFeed(){
   if(!j.smn || !j.smn.length) throw new Error("empty");
   return [
     ...j.smn.map(d=>({...d, id:"smn:"+d.code, src:"MeteoSwiss"})),
+    ...(j.slf||[]).map(d=>({id:"slf:"+d.code,name:d.name,lat:d.lat,lon:d.lon,alt:d.alt,src:"SLF IMIS (30-min mean)",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:75,url:"https://whiterisk.ch/en/conditions"})),
+    ...(j.metar||[]).map(d=>({id:"metar:"+d.id,name:d.name+" ("+d.id+")",lat:d.lat,lon:d.lon,alt:d.alt,src:"METAR airport",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:100,url:"https://aviationweather.gov/data/metar/?ids="+d.id})),
     ...j.piou.map(d=>({id:"pp:"+d.id,name:d.name,lat:d.lat,lon:d.lon,alt:null,src:"OpenWindMap",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,hist:null,url:"https://www.openwindmap.org/PP"+d.id}))
   ];
 }
@@ -402,7 +405,7 @@ function visible(){
   return [...state.stations.values()].filter(s=>!low || s.alt==null || s.alt<700);
 }
 function popup(s){
-  const g=gustFactor(s), t=trend(s), stale=ageMin(s.ts)>STALE_MIN;
+  const g=gustFactor(s), t=trend(s), stale=ageMin(s.ts)>staleLimit(s);
   let h=`<b>${esc(s.name)}</b><span class="tag">${esc(s.src)}</span><table>`;
   if(s.avg==null){ h+=`<tr><td colspan="2">${esc(s.offlineNote||"No data")}</td></tr>`; }
   else{
@@ -422,7 +425,7 @@ function render(){
   const list = visible().sort((a,b)=>(b.avg??-1)-(a.avg??-1));
   layer.clearLayers(); markers={};
   for(const s of list){
-    const stale = ageMin(s.ts)>STALE_MIN || s.avg==null;
+    const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null;
     const html = s.avg==null ? `<div class="wm stale"><svg viewBox="-20 -20 40 40"><circle r="8" fill="#8aa0ab" stroke="#102028" stroke-width="1.4"/></svg><b>off</b></div>`
       : `<div class="wm ${stale?"stale":""}">${arrowSVG(s)}<b>${fmt(s.avg)}${s.gust!=null?"/"+fmt(s.gust):""}</b></div>`;
     const m = L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",html,iconSize:[46,46],iconAnchor:[23,20]})}).bindPopup(()=>popup(s));
@@ -432,7 +435,7 @@ function render(){
   const fresh = list.filter(s=>s.avg!=null);
   let h = `<div class="sec">Stations · ${fresh.length} reporting · ${U()} (avg / gust)</div>`;
   for(const s of list){
-    const stale = ageMin(s.ts)>STALE_MIN || s.avg==null, t=trend(s), g=gustFactor(s);
+    const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null, t=trend(s), g=gustFactor(s);
     h+=`<div class="row ${stale?"stale":""}" data-id="${s.id}">
       <div class="arrow">${s.avg==null?"":arrowSVG(s)}</div>
       <div style="min-width:0"><div class="nm">${esc(s.name)}<span class="tag">${esc(s.src)}</span></div>
@@ -442,7 +445,7 @@ function render(){
   }
   // spots
   h += `<div class="sec">Your spots · nearest live station</div>`;
-  const live = fresh.filter(s=>ageMin(s.ts)<=STALE_MIN && !s.manual);
+  const live = fresh.filter(s=>ageMin(s.ts)<=staleLimit(s) && !s.manual);
   spotLayer.clearLayers();
   for(const sp of SPOTS){
     const near = live.map(s=>({s,d:hav(sp,s)})).sort((a,b)=>a.d-b.d).slice(0,3);
