@@ -321,17 +321,22 @@ async function loadWU(){
     return {...o, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, manual:false, offlineNote:undefined}; });
 }
 
-// Single-station feeds written by the scheduled scraper: {ts, avg, gust, dir, temp, pressure}, km/h, ts in ms
+// Feeds written by the scheduled scraper. Each file holds one object or an array of {id, ts, avg, gust, dir, temp, pressure} (km/h, ts in ms).
 const FEEDS = [
- {file:"yv.json",  label:"YvBeach", st:{id:"yv:YVBEACH",name:"YvBeach",lat:46.8085,lon:6.7456,alt:null,src:"YvBeach",url:"https://www.yvbeach.com/yvmeteo.htm"}},
- {file:"vd8.json", label:"VD8",     st:{id:"vd8:VD8",name:"VD8 (camping)",lat:46.790,lon:6.740,alt:430,src:"VD8",url:"http://www.vd8.ch/meteo/"}}
+ {file:"yv.json",  label:"YvBeach", sts:{YVBEACH:{id:"yv:YVBEACH",name:"YvBeach",lat:46.8085,lon:6.7456,alt:null,src:"YvBeach",url:"https://www.yvbeach.com/yvmeteo.htm"}}},
+ {file:"vd8.json", label:"VD8",     sts:{VD8:{id:"vd8:VD8",name:"VD8 (camping)",lat:46.790,lon:6.740,alt:430,src:"VD8",url:"http://www.vd8.ch/meteo/"}}},
+ {file:"ichtus.json", label:"Ichtus/CVN", sts:{
+   ICHTUS:{id:"ich:ICHTUS",name:"Ichtus (St-Blaise)",lat:47.005,lon:6.993,alt:null,src:"Ichtus",url:"http://webcam.ichtus.ch:8888/IW/WindMSChartMulipleValues.aspx"},
+   CVN:{id:"ich:CVN",name:"CVN (Nid-du-Crô)",lat:46.989,lon:6.962,alt:null,src:"CVN via Ichtus",url:"https://holfuy.com/en/weather/1020"},
+   CUDREFIN:{id:"ich:CUDREFIN",name:"Cudrefin",lat:46.954,lon:7.018,alt:null,src:"Cudrefin via Ichtus",url:"https://letskite.ch/spots/82/kitesurf/cudrefin/"}}}
 ];
 async function loadFeed(fd){
   const r = await fetch(fd.file,{cache:"no-store"});
   if(!r.ok) throw new Error(fd.label+" feed HTTP "+r.status);
-  const f = await r.json();
-  if(f.avg==null) throw new Error(fd.label+": no wind value");
-  return {...fd.st, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, hist:null};
+  const j = await r.json(), arr = Array.isArray(j) ? j : [j], res = [];
+  for(const f of arr){ const st = fd.sts[f.id]; if(st && f.avg!=null) res.push({...st, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, hist:null}); }
+  if(!res.length) throw new Error(fd.label+": no wind value");
+  return res;
 }
 
 async function refresh(){
@@ -345,7 +350,7 @@ async function refresh(){
       $("#status").textContent = `loading MeteoSwiss ${++done}/${todo.length}…`;
     }),
     loadPiou().then(a=>out.push(...a)).catch(e=>errors.push("OpenWindMap: "+e.message)),
-    ...FEEDS.map(fd=>loadFeed(fd).then(x=>out.push(x)).catch(e=>errors.push(String(e.message||e)))),
+    ...FEEDS.map(fd=>loadFeed(fd).then(x=>out.push(...x)).catch(e=>errors.push(String(e.message||e)))),
     loadWU().then(a=>out.push(...a)).catch(e=>{ errors.push(String(e.message||e)); out.push(...WU.map(s=>({...s}))); })
   ];
   await Promise.all(jobs);
