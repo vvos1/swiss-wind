@@ -2,11 +2,7 @@
 // that polls a small JSON file, realtimegauges.txt, which is read here once per pass (the page itself reads it about every minute).
 //   node wu-feed/scrape-vd8.mjs site/vd8.json
 import { writeFile, rename } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-const sh = promisify(execFile);
 
-const URLS = ["http://www.vd8.ch/meteo/realtimegauges.txt", "https://www.vd8.ch/meteo/realtimegauges.txt"];
 const TO_KMH = { "km/h": 1, "kmh": 1, "m/s": 3.6, "mph": 1.609344, "kts": 1.852, "kt": 1.852, "knots": 1.852 };
 const n = v => { const x = parseFloat(String(v).replace(",", ".")); return Number.isFinite(x) ? x : null; };
 
@@ -24,26 +20,28 @@ export function parseVd8(j) {
 }
 if (process.argv[1] && process.argv[1].endsWith("scrape-vd8.mjs")) {
   const out = process.argv[2] || "vd8.json";
-  let text; const notes = [];
-  for (const u of URLS) {                                   // 1) Node fetch, redirects inspected by hand (the site is known to bounce http<->https)
-    try {
-      let url = u;
-      for (let hop = 0; hop < 4 && !text; hop++) {
-        const r = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 swiss-wind-map (personal, low rate)" }, redirect: "manual" });
-        if (r.status >= 300 && r.status < 400) { const loc = r.headers.get("location"); notes.push(`${url} -> ${r.status} ${loc}`); if (!loc) break; url = new URL(loc, url).href; continue; }
-        if (r.ok) text = await r.text(); else notes.push(`${url} -> HTTP ${r.status}`);
-        break;
-      }
-    } catch (e) { notes.push(`${u}: ${e.message} / ${e.cause?.code || e.cause?.message || "?"}`); }
-    if (text) break;
-  }
-  if (!text) {                                              // 2) curl, which is more tolerant than Node's fetch
-    for (const u of URLS) {
-      try { const { stdout } = await sh("curl", ["-sS", "-m", "25", "--max-redirs", "5", "-L", "-A", "Mozilla/5.0 swiss-wind-map", u]); if (stdout.trim().startsWith("{")) { text = stdout; break; } notes.push(`curl ${u}: not JSON (${stdout.slice(0, 80).replace(/\s+/g, " ")})`); }
-      catch (e) { notes.push(`curl ${u}: ${String(e.stderr || e.message).trim().slice(0, 200)}`); }
-    }
+  const BASE = "http://www.vd8.ch/meteo/";                  // the site only works over http (its https certificate is for another host)
+  const UA = { "user-agent": "Mozilla/5.0 swiss-wind-map (personal, low rate)" };
+  const get = async (u) => { const r = await fetch(u, { headers: UA, redirect: "follow" }); if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); };
+  const notes = []; let text;
+  // The gauges page names its data file in scripts/gauges.js (realTimeURL); read it instead of guessing.
+  const cands = [];
+  try {
+    const js = await get(BASE + "scripts/gauges.js");
+    const m = js.match(/realTimeURL\s*:\s*['"]([^'"]+)['"]/);
+    if (m) cands.push(m[1]);
+    const lits = [...new Set([...js.matchAll(/['"]([\w./-]+\.(?:txt|json|php|xml))['"]/g)].map(x => x[1]))];
+    notes.push("gauges.js realTimeURL=" + (m ? m[1] : "none") + "; data-file literals: " + lits.join(", "));
+    cands.push(...lits);
+  } catch (e) { notes.push("gauges.js: " + e.message); }
+  cands.push("realtimegauges.txt", "realtimegauges.json", "realtime.txt");
+  for (const c of [...new Set(cands)]) {
+    const u = new URL(c, BASE).href;
+    try { const t = await get(u); if (t.trim().startsWith("{")) { text = t; notes.push("using " + u); break; } notes.push(`${u}: not JSON (${t.slice(0, 80).replace(/\s+/g, " ")})`); }
+    catch (e) { notes.push(`${u}: ${e.message}`); }
   }
   if (!text) throw new Error("vd8 fetch failed:\n  " + notes.join("\n  "));
+  console.log("vd8:", notes[notes.length - 1]);
   let j; try { j = JSON.parse(text); } catch { throw new Error("vd8: not JSON, starts with: " + text.slice(0, 200)); }
   const data = parseVd8(j);
   await writeFile(out + ".tmp", JSON.stringify(data)); await rename(out + ".tmp", out);
