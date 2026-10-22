@@ -16,17 +16,30 @@ export function normalize(o) {
   };
 }
 
-export function findKey(html) {
-  const pats = [/[?&]apiKey=([0-9a-zA-Z]{32})/, /apiKey["'\s:=]+["']?([0-9a-zA-Z]{32})/i];
-  for (const p of pats) { const m = p.exec(html); if (m) return m[1]; }
-  return null;
+export function findKeys(html) {
+  const found = [];
+  for (const p of [/[?&]apiKey=([0-9a-zA-Z]{32})/g, /apiKey["'\s:=]+["']?([0-9a-zA-Z]{32})/gi])
+    for (const m of html.matchAll(p)) if (!found.includes(m[1])) found.push(m[1]);
+  return found;
 }
+export const findKey = (html) => findKeys(html)[0] || null;
 
-export async function discoverKey(fetchFn = fetch) {
-  const r = await fetchFn("https://www.wunderground.com/dashboard/pws/" + STATIONS[0], { headers: { "user-agent": UA } });
-  const key = findKey(await r.text());
-  if (!key) throw new Error("API key not found in the dashboard page. Set WU_API_KEY instead.");
-  return key;
+const obsUrl = (id, key) =>
+  `https://api.weather.com/v2/pws/observations/current?stationId=${id}&format=json&units=m&numericPrecision=decimal&apiKey=${key}`;
+
+// The dashboard page hands out several keys and only some are accepted, so every candidate is tested before use.
+export async function discoverKey(fetchFn = fetch, tries = 4) {
+  const tested = new Set();
+  for (let t = 0; t < tries; t++) {
+    const r = await fetchFn("https://www.wunderground.com/dashboard/pws/" + STATIONS[0], { headers: { "user-agent": UA } });
+    for (const key of findKeys(await r.text())) {
+      if (tested.has(key)) continue;
+      tested.add(key);
+      const probe = await fetchFn(obsUrl(STATIONS[0], key), { headers: { "user-agent": UA } });
+      if (probe.status !== 401 && probe.status !== 403) return key;
+    }
+  }
+  throw new Error(`No working API key found (${tested.size} candidates tried). Set WU_API_KEY instead.`);
 }
 
 export async function fetchAll({ apiKey, fetchFn = fetch, stations = STATIONS } = {}) {
@@ -35,8 +48,7 @@ export async function fetchAll({ apiKey, fetchFn = fetch, stations = STATIONS } 
   for (const id of stations) {          // one at a time, on purpose
     const empty = { id, ts: null, avg: null, gust: null, dir: null, temp: null };
     try {
-      const u = `https://api.weather.com/v2/pws/observations/current?stationId=${id}&format=json&units=m&numericPrecision=decimal&apiKey=${key}`;
-      const r = await fetchFn(u, { headers: { "user-agent": UA } });
+      const r = await fetchFn(obsUrl(id, key), { headers: { "user-agent": UA } });
       if (r.status === 204) { out.push(empty); continue; }          // station offline / no data
       if (!r.ok) throw new Error("HTTP " + r.status);
       const j = await r.json();

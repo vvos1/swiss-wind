@@ -24,8 +24,11 @@ jobs:
           if ! node -e 'const d=JSON.parse(require("fs").readFileSync("site/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
             echo "Fast method failed for at least one station, falling back to the headless browser"
             npm install --no-save playwright@1.49.1
-            npx playwright install --with-deps chromium
-            node wu-feed/scrape-wu-browser.mjs site/wu.json
+            node wu-feed/scrape-wu-browser.mjs site/wu.json || {
+              echo "Preinstalled Chrome unavailable, installing Chromium"
+              npx playwright install --with-deps chromium
+              node wu-feed/scrape-wu-browser.mjs site/wu.json
+            }
           fi
       - name: Publish site to the gh-pages branch (single commit, no history build-up)
         run: |

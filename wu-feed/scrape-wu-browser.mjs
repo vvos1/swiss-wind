@@ -6,7 +6,9 @@ import { STATIONS, normalizeAny } from "./wu-core.mjs";
 
 const out = process.argv[2] || "wu.json";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-const browser = await chromium.launch();
+let browser;
+try { browser = await chromium.launch({ channel: "chrome" }); }      // Chrome is preinstalled on GitHub runners: nothing to download
+catch { browser = await chromium.launch(); }                          // otherwise the bundled Chromium (needs: npx playwright install chromium)
 const ctx = await browser.newContext({ locale: "en-US", userAgent: UA, viewport: { width: 1280, height: 900 } });
 const results = [];
 
