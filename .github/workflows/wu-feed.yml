@@ -22,6 +22,7 @@ jobs:
           mkdir -p site
           git init -q -b gh-pages site 2>/dev/null || true
           scrape() {
+            node wu-feed/scrape-yvbeach.mjs site/yv.json || echo "YvBeach scrape failed"
             node wu-feed/scrape-wu.mjs site/wu.json || true
             if ! node -e 'const d=JSON.parse(require("fs").readFileSync("site/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
               echo "Fast method failed, using headless browser"
