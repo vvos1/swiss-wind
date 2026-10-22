@@ -62,7 +62,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,380px) 
 <header>
   <h1>Vaud Wind Map</h1>
   <div class="ctl">
-    <label>Unit <select id="unit"><option value="kn">knots</option><option value="kmh">km/h</option><option value="ms">m/s</option></select></label>
+    <span id="unitToggle" role="group" aria-label="Wind unit" style="display:inline-flex;border:1px solid #8aa0ab;border-radius:8px;overflow:hidden;font-size:13px">
+      <button type="button" data-u="kn" style="border:0;padding:5px 12px;cursor:pointer">kn</button><button type="button" data-u="kmh" style="border:0;border-left:1px solid #8aa0ab;padding:5px 12px;cursor:pointer">km/h</button></span><input type="hidden" id="unit" value="kn">
     <label>Area <select id="region"><option value="near">Vaud &amp; lakes</option><option value="all">All Switzerland</option></select></label>
     <label><input type="checkbox" id="lowOnly" checked> Below 700 m only</label>
     <button id="refresh" type="button">Refresh</button>
@@ -453,7 +454,13 @@ $("#rail").addEventListener("click",e=>{
   if(row.dataset.id && markers[row.dataset.id]){ const m=markers[row.dataset.id]; map.setView(m.getLatLng(),Math.max(map.getZoom(),11)); m.openPopup(); }
   else if(row.dataset.spot){ const sp=SPOTS.find(s=>s.name===row.dataset.spot); map.setView([sp.lat,sp.lon],12); }
 });
-$("#unit").addEventListener("change",render);
+function setUnit(u){
+  $("#unit").value=u; try{localStorage.setItem("windUnit",u);}catch(e){}
+  document.querySelectorAll("#unitToggle button").forEach(b=>{const on=b.dataset.u===u; b.style.background=on?"#1f6f8b":"#fff"; b.style.color=on?"#fff":"#1c2b33"; b.setAttribute("aria-pressed",on);});
+  render();
+}
+document.querySelectorAll("#unitToggle button").forEach(b=>b.addEventListener("click",()=>setUnit(b.dataset.u)));
+{ let u="kn"; try{u=localStorage.getItem("windUnit")||"kn";}catch(e){} if(!UNITS[u]||u==="ms") u="kn"; setUnit(u); }
 $("#lowOnly").addEventListener("change",render);
 $("#region").addEventListener("change",refresh);
 $("#refresh").addEventListener("click",refresh);
