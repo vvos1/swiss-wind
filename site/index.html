@@ -400,6 +400,62 @@ function spark(s){
 const arrowSVG = (s,sz) => { const c=colorFor(s.avg), rot=((s.dir??0)+180)%360;
   return `<svg viewBox="-20 -20 40 40" style="transform:rotate(${rot}deg)"><path d="M0 -17 L10 11 L0 5 L-10 11 Z" fill="${c}" stroke="#102028" stroke-width="1.4" stroke-linejoin="round"/></svg>`; };
 
+
+/* ============ CANVAS WIND LAYER (one <canvas> instead of hundreds of DOM markers: much lighter to pan/zoom) ============ */
+const WindCanvas = L.Layer.extend({
+  onAdd(map){
+    this._map = map; this._items = [];
+    const c = this._c = L.DomUtil.create("canvas", "leaflet-zoom-hide");
+    c.style.position = "absolute"; c.style.pointerEvents = "none";
+    map.getPane("markerPane").appendChild(c);
+    this._click = e => this._onClick(e); this._move = L.Util.throttle(e => this._onMove(e), 60, this);
+    map.on("click", this._click); map.on("mousemove", this._move);
+    this._reset();
+  },
+  onRemove(map){ L.DomUtil.remove(this._c); map.off("click", this._click); map.off("mousemove", this._move); },
+  getEvents(){ return {moveend:this._reset, zoomend:this._reset, resize:this._reset}; },
+  setItems(items){ this._items = items; this._reset(); },
+  _reset(){
+    const map = this._map, sz = map.getSize(), pad = 0.5, dpr = window.devicePixelRatio || 1;
+    const w = Math.round(sz.x*(1+2*pad)), h = Math.round(sz.y*(1+2*pad));   // drawn bigger than the screen so panning shows no blank edge
+    const c = this._c; c.width = w*dpr; c.height = h*dpr; c.style.width = w+"px"; c.style.height = h+"px";
+    this._tl = map.containerPointToLayerPoint([-sz.x*pad, -sz.y*pad]);
+    L.DomUtil.setPosition(c, this._tl);
+    const ctx = c.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    ctx.font = '600 11px ui-monospace, Menlo, Consolas, monospace'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for(const s of this._items.slice().reverse()){          // items arrive best-first: draw them last so they end up on top
+      const p = map.latLngToLayerPoint([s.lat,s.lon]).subtract(this._tl);
+      if(p.x < -40 || p.y < -40 || p.x > w+40 || p.y > h+40) continue;
+      this._draw(ctx, s, p.x, p.y);
+    }
+  },
+  _draw(ctx, s, x, y){
+    const stale = ageMin(s.ts) > staleLimit(s) || s.avg == null;
+    ctx.globalAlpha = stale ? 0.5 : 1;
+    if(s.avg == null){
+      ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fillStyle = "#8aa0ab"; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = "#102028"; ctx.stroke();
+    } else {
+      ctx.save(); ctx.translate(x, y); ctx.rotate((((s.dir ?? 0) + 180) % 360) * Math.PI/180); ctx.scale(0.85, 0.85);
+      ctx.beginPath(); ctx.moveTo(0,-17); ctx.lineTo(10,11); ctx.lineTo(0,5); ctx.lineTo(-10,11); ctx.closePath();
+      ctx.fillStyle = colorFor(s.avg); ctx.fill(); ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.strokeStyle = "#102028"; ctx.stroke(); ctx.restore();
+    }
+    const txt = s.avg == null ? "off" : fmt(s.avg) + (s.gust != null ? "/" + fmt(s.gust) : "");
+    const tw = ctx.measureText(txt).width + 10, ly = y + 19;
+    ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x - tw/2, ly - 8, tw, 16, 8); else ctx.rect(x - tw/2, ly - 8, tw, 16);
+    ctx.fill(); ctx.fillStyle = "#14232b"; ctx.fillText(txt, x, ly + 0.5);
+    ctx.globalAlpha = 1;
+  },
+  _hit(pt){
+    let best = null, bd = 26*26;
+    for(const s of this._items){ const q = this._map.latLngToContainerPoint([s.lat,s.lon]), dx = q.x-pt.x, dy = (q.y+6)-pt.y, d = dx*dx+dy*dy; if(d < bd){ bd = d; best = s; } }
+    return best;
+  },
+  _onClick(e){ const s = this._hit(e.containerPoint); if(s) openStation(s); },
+  _onMove(e){ this._map.getContainer().style.cursor = this._hit(e.containerPoint) ? "pointer" : ""; }
+});
+function openStation(s){ L.popup({offset:[0,-4]}).setLatLng([s.lat,s.lon]).setContent(popup(s)).openOn(map); }
+
 /* ============ RENDER ============ */
 let map, layer, spotLayer, markers = {};
 function visible(){
@@ -446,13 +502,7 @@ function pickShown(list){
 }
 function render(){
   const list = visible().sort((a,b)=>(b.avg??-1)-(a.avg??-1));
-  markers = {}; layer.clearLayers();
-  for(const s of list){      // build once per data refresh; only the picked ones are put on the map
-    const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null;
-    const html = s.avg==null ? `<div class="wm stale"><svg viewBox="-20 -20 40 40"><circle r="8" fill="#8aa0ab" stroke="#102028" stroke-width="1.4"/></svg><b>off</b></div>`
-      : `<div class="wm ${stale?"stale":""}">${arrowSVG(s)}<b>${fmt(s.avg)}${s.gust!=null?"/"+fmt(s.gust):""}</b></div>`;
-    markers[s.id] = L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",html,iconSize:[46,46],iconAnchor:[23,20]})}).bindPopup(()=>popup(s));
-  }
+  markers = {}; for(const s of list) markers[s.id] = s;
   state.list = list;
   redraw();
 }
@@ -460,13 +510,11 @@ let redrawTimer = null;
 const redrawSoon = () => { clearTimeout(redrawTimer); redrawTimer = setTimeout(()=>{ if(state.list) redraw(); }, 120); };
 function redraw(){
   const list = state.list, shown = pickShown(list);
-  const want = new Set(shown.map(s=>s.id));
-  layer.eachLayer(m=>{ if(!want.has(m._sid) && !(m.isPopupOpen && m.isPopupOpen())) layer.removeLayer(m); });   // keep an open popup alive while panning
-  for(const s of shown){ const m = markers[s.id]; m._sid = s.id; if(!layer.hasLayer(m)) layer.addLayer(m); }
+  layer.setItems(shown);
   // rail
   const fresh = list.filter(s=>s.avg!=null);
   let h = `<div class="sec">Stations in view · ${shown.length} of ${fresh.length} reporting · ${U()} (avg / gust)</div>`;
-  for(const s of shown.slice(0,80)){
+  for(const s of shown.slice(0,50)){
     const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null, t=trend(s), g=gustFactor(s);
     h+=`<div class="row ${stale?"stale":""}" data-id="${s.id}">
       <div class="arrow">${s.avg==null?"":arrowSVG(s)}</div>
@@ -486,7 +534,7 @@ function redraw(){
   }
   if(state.errors.length) h+=`<div class="err"><b>${state.errors.length} feed(s) failed</b><br>${state.errors.slice(0,6).map(esc).join("<br>")}</div>`;
   h+=`<div class="note">Sources: MeteoSwiss open data (cite “Source: MeteoSwiss”), OpenWindMap/Pioupiou network, winds.mobi (Holfuy, FFVL and other networks), SLF IMIS, airport METAR, Weather Underground dashboards (manual snapshot). Wind direction is where the wind comes from; arrows point where it blows to. Gust = max over the last 10 min (MeteoSwiss) or 4 min (OpenWindMap).</div>`;
-  $("#rail").innerHTML = h;
+  if(h !== state.railHtml){ state.railHtml = h; $("#rail").innerHTML = h; }
   const ok = state.stations.size - state.errors.length;
   $("#status").innerHTML = `<span class="${state.errors.length?"bad":"ok"}">${state.errors.length?state.errors.length+" feed errors":"all feeds ok"}</span><span>updated ${new Date(state.updated).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>`;
 }
@@ -502,7 +550,7 @@ const baseLeicht = L.tileLayer(swt("ch.swisstopo.leichte-basiskarte","png"),{max
 const baseOSM = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors"});
 baseOSM.addTo(map);
 L.control.layers({"OpenStreetMap":baseOSM,"Swiss light map (Swiss side only)":baseLeicht,"Swiss map (grey)":baseGrey,"Swiss map (colour)":baseColor,"Satellite":baseSat},null,{position:"topright"}).addTo(map);
-layer = L.layerGroup().addTo(map); spotLayer = L.layerGroup().addTo(map);
+layer = new WindCanvas().addTo(map); spotLayer = L.layerGroup().addTo(map);
 const lg = L.control({position:"bottomleft"});
 lg.onAdd = () => { const d=L.DomUtil.create("div","legend");
   d.innerHTML = "<b>knots</b><br>"+STOPS.map(([t,c])=>`<i style="background:${c}"></i>${t}+`).join("<br>"); return d; };
@@ -510,7 +558,7 @@ lg.addTo(map);
 
 $("#rail").addEventListener("click",e=>{
   const row=e.target.closest(".row"); if(!row) return;
-  if(row.dataset.id && markers[row.dataset.id]){ const m=markers[row.dataset.id]; map.setView(m.getLatLng(),Math.max(map.getZoom(),11)); m.openPopup(); }
+  if(row.dataset.id && markers[row.dataset.id]){ const m=markers[row.dataset.id]; map.setView([m.lat,m.lon],Math.max(map.getZoom(),11)); openStation(m); }
   else if(row.dataset.spot){ const sp=SPOTS.find(s=>s.name===row.dataset.spot); map.setView([sp.lat,sp.lon],12); }
 });
 function setUnit(u){
