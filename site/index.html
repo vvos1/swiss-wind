@@ -320,13 +320,17 @@ async function loadWU(){
     return {...o, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, manual:false, offlineNote:undefined}; });
 }
 
-const YV = {id:"yv:YVBEACH",name:"YvBeach",lat:46.8085,lon:6.7456,alt:null,src:"YvBeach",url:"https://www.yvbeach.com/yvmeteo.htm"};
-async function loadYV(){
-  const r = await fetch("yv.json",{cache:"no-store"});
-  if(!r.ok) throw new Error("YvBeach feed HTTP "+r.status);
-  const f = await r.json();                          // {ts, avg, gust, dir, temp, pressure}, km/h, ts in ms
-  if(f.avg==null) throw new Error("YvBeach: no wind value");
-  return [{...YV, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, hist:null}];
+// Single-station feeds written by the scheduled scraper: {ts, avg, gust, dir, temp, pressure}, km/h, ts in ms
+const FEEDS = [
+ {file:"yv.json",  label:"YvBeach", st:{id:"yv:YVBEACH",name:"YvBeach",lat:46.8085,lon:6.7456,alt:null,src:"YvBeach",url:"https://www.yvbeach.com/yvmeteo.htm"}},
+ {file:"vd8.json", label:"VD8",     st:{id:"vd8:VD8",name:"VD8 (camping)",lat:46.790,lon:6.740,alt:430,src:"VD8",url:"http://www.vd8.ch/meteo/"}}
+];
+async function loadFeed(fd){
+  const r = await fetch(fd.file,{cache:"no-store"});
+  if(!r.ok) throw new Error(fd.label+" feed HTTP "+r.status);
+  const f = await r.json();
+  if(f.avg==null) throw new Error(fd.label+": no wind value");
+  return {...fd.st, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, hist:null};
 }
 
 async function refresh(){
@@ -340,7 +344,7 @@ async function refresh(){
       $("#status").textContent = `loading MeteoSwiss ${++done}/${todo.length}…`;
     }),
     loadPiou().then(a=>out.push(...a)).catch(e=>errors.push("OpenWindMap: "+e.message)),
-    loadYV().then(a=>out.push(...a)).catch(e=>errors.push(String(e.message||e))),
+    ...FEEDS.map(fd=>loadFeed(fd).then(x=>out.push(x)).catch(e=>errors.push(String(e.message||e)))),
     loadWU().then(a=>out.push(...a)).catch(e=>{ errors.push(String(e.message||e)); out.push(...WU.map(s=>({...s}))); })
   ];
   await Promise.all(jobs);
