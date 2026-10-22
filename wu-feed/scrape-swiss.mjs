@@ -1,6 +1,8 @@
 // All of Switzerland in one file: every MeteoSwiss SwissMetNet station that measures wind + every OpenWindMap/Pioupiou beacon.
 // Runs on the GitHub runner so visitors download one small file instead of ~160 CSVs.   node wu-feed/scrape-swiss.mjs site/swiss.json
 import { writeFile, rename } from "node:fs/promises";
+import { dirname } from "node:path";
+import { loadHistory, addPoints, saveHistory } from "./history.mjs";
 
 const BASE = "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/";
 const CH_BBOX = { s: 45.8, n: 47.85, w: 5.9, e: 10.55 };
@@ -25,18 +27,20 @@ export function parseSmn(txt) {
     .filter(x => x.ts && x.avg != null);
   if (!rows.length) return null;
   const last = rows[rows.length - 1];
-  return { ...last, hist: rows.slice(-13).map(r => ({ ts: r.ts, avg: r.avg })) };
+  return { ...last, hist: rows.slice(-13).map(r => ({ ts: r.ts, avg: r.avg })), day: rows };
 }
 // SLF IMIS (snow/avalanche stations, many with wind): 30-minute means, speed in m/s -> km/h
 export function parseImis(recs) {
   const rows = (recs || []).filter(r => r.VW_30MIN_MEAN != null && r.measure_date);
   if (!rows.length) return null;
   const l = rows[rows.length - 1];
-  return { ts: Date.parse(l.measure_date), avg: l.VW_30MIN_MEAN * 3.6, gust: l.VW_30MIN_MAX == null ? null : l.VW_30MIN_MAX * 3.6, dir: l.DW_30MIN_MEAN ?? null, temp: l.TA_30MIN_MEAN ?? null };
+  const day = rows.map(r => ({ ts: Date.parse(r.measure_date), avg: r.VW_30MIN_MEAN * 3.6, gust: r.VW_30MIN_MAX == null ? null : r.VW_30MIN_MAX * 3.6, dir: r.DW_30MIN_MEAN ?? null }));
+  return { day, ts: Date.parse(l.measure_date), avg: l.VW_30MIN_MEAN * 3.6, gust: l.VW_30MIN_MAX == null ? null : l.VW_30MIN_MAX * 3.6, dir: l.DW_30MIN_MEAN ?? null, temp: l.TA_30MIN_MEAN ?? null };
 }
 // METAR (aviationweather.gov): speed in knots -> km/h, newest report per airport
-export function parseMetar(list) {
+export function parseMetar(list, all) {
   const best = new Map();
+  if (all) return (list || []).filter(m => /, CH$/.test(m.name || "") && m.wspd != null && m.obsTime).map(m => ({ id: m.icaoId, ts: m.obsTime * 1000, avg: m.wspd * 1.852, gust: m.wgst == null ? null : m.wgst * 1.852, dir: typeof m.wdir === "number" ? m.wdir : null }));
   for (const m of list || []) {
     if (!/, CH$/.test(m.name || "") || m.wspd == null || !m.obsTime) continue;
     if (!best.has(m.icaoId) || m.obsTime > best.get(m.icaoId).obsTime) best.set(m.icaoId, m);
@@ -91,7 +95,8 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-swiss.mjs")) {
     });
   } catch (e) { failed.push("slf:" + e.message); }
   let metar = [];
-  try { metar = parseMetar(JSON.parse(await getText(`https://aviationweather.gov/api/data/metar?bbox=${CH_BBOX.s},${CH_BBOX.w},${CH_BBOX.n},${CH_BBOX.e}&format=json&hours=3`))); }
+  let metarRaw = [];
+  try { metarRaw = JSON.parse(await getText(`https://aviationweather.gov/api/data/metar?bbox=${CH_BBOX.s},${CH_BBOX.w},${CH_BBOX.n},${CH_BBOX.e}&format=json&hours=3`)); metar = parseMetar(metarRaw); }
   catch (e) { failed.push("metar:" + e.message); }
   let winds = [];
   try {
@@ -112,6 +117,18 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-swiss.mjs")) {
     if (tileFail > tiles.length / 2) failed.push("winds.mobi: " + tileFail + " tile failures");
   } catch (e) { failed.push("winds.mobi:" + e.message); }
   if (!smn.length && !piou.length) throw new Error("nothing fetched: " + failed.slice(0, 5).join("; "));
+  // 24 h history: MeteoSwiss and SLF deliver the whole day, the others add their latest reading each run
+  try {
+    const hp = dirname(out) + "/history.json", hist = loadHistory(hp);
+    for (const d of smn) addPoints(hist, "smn:" + d.code, d.day || []);
+    for (const d of slf) addPoints(hist, "slf:" + d.code, d.day || []);
+    for (const d of parseMetar(metarRaw, true)) addPoints(hist, "metar:" + d.id, [d]);
+    for (const d of piou) addPoints(hist, "pp:" + d.id, [d]);
+    for (const d of winds) addPoints(hist, "wm:" + d.id, [d]);
+    saveHistory(hp, hist);
+  } catch (e) { failed.push("history:" + e.message); }
+  for (const d of smn) delete d.day;               // not needed in swiss.json
+  for (const d of slf) delete d.day;
   await writeFile(out + ".tmp", JSON.stringify({ generated: Date.now(), smn, piou, slf, metar, winds }));
   await rename(out + ".tmp", out);
   console.log(new Date().toISOString(), `SWISS meteoswiss=${smn.length}/${stations.length} openwindmap=${piou.length} slf=${slf.length} metar=${metar.length} winds.mobi=${winds.length}`, failed.length ? "failed: " + failed.slice(0, 8).join("; ") : "");

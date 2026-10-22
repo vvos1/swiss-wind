@@ -52,7 +52,13 @@ main{flex:1;min-height:0;position:relative}
 .wm b{font:600 11px/1 var(--mono);background:rgba(255,255,255,.92);color:#14232b;border-radius:8px;padding:2px 5px;margin-top:-4px;box-shadow:0 1px 2px rgba(0,0,0,.3);white-space:nowrap}
 .wm.stale{opacity:.5}
 .spot{width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid #fff;box-shadow:0 0 0 1px var(--accent)}
-.leaflet-popup-content{font:13px/1.45 var(--sans);min-width:190px}
+.leaflet-popup-content{font:13px/1.45 var(--sans);min-width:270px}
+.hist{margin-top:.5rem;border-top:1px solid #d9e0e3;padding-top:.35rem;color:#14232b}
+.hist svg{display:block;width:100%;height:auto;touch-action:none}
+.hbar{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#5d6f78;min-height:20px}
+.hbar button{padding:0 .4rem;font-size:11px;margin-left:.2rem;background:#fff;color:#14232b;border:1px solid #d9e0e3;border-radius:4px;cursor:pointer}
+.hbar button.on{border-color:#0b6e8a;color:#0b6e8a;font-weight:600}
+.hmsg{font-size:12px;color:#5d6f78;padding:.3rem 0}
 .leaflet-popup-content table{border-collapse:collapse;width:100%}
 .leaflet-popup-content td{padding:1px 0}.leaflet-popup-content td:last-child{text-align:right;font-family:var(--mono)}
 .legend{background:rgba(255,255,255,.93);color:#14232b;padding:.4rem .6rem;border-radius:4px;font:11px/1.2 var(--mono);box-shadow:0 1px 4px rgba(0,0,0,.3)}
@@ -367,7 +373,7 @@ async function loadSwissFeed(){
 }
 
 async function refresh(){
-  $("#refresh").disabled = true;
+  $("#refresh").disabled = true; histPromise = null;
   if(!state.augmented){ state.augmented = true; await augmentStations(); }
   const errors=[], out=[];
   let feed = null;
@@ -464,6 +470,56 @@ const WindCanvas = L.Layer.extend({
   _onClick(e){ const s = this._hit(e.containerPoint); if(s) openStation(s); },
   _onMove(e){ this._map.getContainer().style.cursor = this._hit(e.containerPoint) ? "pointer" : ""; }
 });
+
+/* ============ STATION HISTORY (popup chart, data from history.json built by the scheduled job) ============ */
+let histPromise = null;
+const getHist = () => histPromise || (histPromise = fetch("history.json",{cache:"no-store"}).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).catch(e=>{ histPromise=null; throw e; }));
+function initHist(box){
+  let hours = 12; try{ hours = +localStorage.getItem("histHours") || 12; }catch(e){}
+  box.innerHTML = `<div class="hbar"><span class="hv">History</span><span>${[3,12,24].map(n=>`<button type="button" data-h="${n}">${n} h</button>`).join("")}</span></div><div class="hbody"><div class="hmsg">Loading history…</div></div>`;
+  const draw = h => drawHist(box, h, hours);
+  getHist().then(draw).catch(()=>{ box.querySelector(".hbody").innerHTML = `<div class="hmsg">No history available yet.</div>`; });
+  box.querySelectorAll("button[data-h]").forEach(b=>b.addEventListener("click",()=>{
+    hours = +b.dataset.h; try{ localStorage.setItem("histHours", hours); }catch(e){}
+    getHist().then(draw).catch(()=>{});
+  }));
+  box.querySelectorAll("button[data-h]").forEach(b=>b.classList.toggle("on", +b.dataset.h===hours));
+}
+function drawHist(box, h, hours){
+  box.querySelectorAll("button[data-h]").forEach(b=>b.classList.toggle("on", +b.dataset.h===hours));
+  const body = box.querySelector(".hbody"), hv = box.querySelector(".hv");
+  const nowMin = Math.round(Date.now()/60000), t0 = nowMin - hours*60;
+  const pts = (h.s[box.dataset.sid] || []).filter(r=>r[0] >= t0);
+  if(pts.length < 2){ body.innerHTML = `<div class="hmsg">History is still building up (${pts.length} reading${pts.length===1?"":"s"} so far).</div>`; hv.textContent = "History"; return; }
+  const conv = v => UNITS[$("#unit").value].f(v/10), unit = U();
+  const W=270, H=118, L=30, R=6, T=8, B=20, pw=W-L-R, ph=H-T-B;
+  let mx = 0; for(const r of pts) mx = Math.max(mx, conv(r[2] ?? r[1]), conv(r[1]));
+  const ymax = [5,10,15,20,25,30,40,50,60,80,100,150].find(v=>v>=mx*1.05) || Math.ceil(mx/50)*50;
+  const X = t => L + (t-t0)/(nowMin-t0)*pw, Y = v => T + ph - Math.min(v,ymax)/ymax*ph;
+  const GAP = 90;                                           // minutes without a reading before the line breaks
+  const line = (idx) => { let d="", prev=null; for(const r of pts){ if(r[idx]==null){ prev=null; continue; } const x=X(r[0]).toFixed(1), y=Y(conv(r[idx])).toFixed(1); d += (prev!=null && r[0]-prev<=GAP ? "L" : "M")+x+" "+y; prev=r[0]; } return d; };
+  const area = (() => { let d="", seg=[]; const flush=()=>{ if(seg.length>1) d += "M"+X(seg[0][0]).toFixed(1)+" "+(T+ph)+seg.map(r=>"L"+X(r[0]).toFixed(1)+" "+Y(conv(r[1])).toFixed(1)).join("")+"L"+X(seg[seg.length-1][0]).toFixed(1)+" "+(T+ph)+"Z"; seg=[]; };
+    for(const r of pts){ if(seg.length && r[0]-seg[seg.length-1][0] > GAP) flush(); seg.push(r); } flush(); return d; })();
+  const tl = t => new Date(t*60000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  let g = ""; for(const f of [0,0.5,1]){ const v = ymax*f, y = Y(v); g += `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#d9e0e3" stroke-width="1"/><text x="${L-4}" y="${y+3}" text-anchor="end" font-size="9" fill="#5d6f78">${Math.round(v)}</text>`; }
+  for(const [t,a] of [[t0,"start"],[Math.round((t0+nowMin)/2),"middle"],[nowMin,"end"]]) g += `<text x="${X(t)}" y="${H-5}" text-anchor="${a}" font-size="9" fill="#5d6f78">${t===nowMin?"now":tl(t)}</text>`;
+  body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind history">${g}
+    <path d="${area}" fill="#0b6e8a" opacity=".16"/><path d="${line(2)}" fill="none" stroke="#8aa0ab" stroke-width="1.2"/><path d="${line(1)}" fill="none" stroke="#0b6e8a" stroke-width="1.8" stroke-linejoin="round"/>
+    <line class="cur" y1="${T}" y2="${T+ph}" stroke="#14232b" stroke-width="1" opacity="0"/><circle class="dot" r="3" fill="#0b6e8a" stroke="#fff" stroke-width="1" opacity="0"/>
+    <rect x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent" class="hit"/></svg>
+    <div class="hmsg" style="padding-top:0"><b style="color:#0b6e8a">&#9644;</b> average &nbsp; <b style="color:#8aa0ab">&#9644;</b> gust &nbsp; (${unit})</div>`;
+  hv.textContent = `Last ${hours} h · ${pts.length} readings`;
+  const svg = body.querySelector("svg"), cur = svg.querySelector(".cur"), dot = svg.querySelector(".dot");
+  const show = ev => {
+    const bb = svg.getBoundingClientRect(), cx = ((ev.touches?ev.touches[0].clientX:ev.clientX) - bb.left) / bb.width * W;
+    let best = pts[0], bd = 1e9; for(const r of pts){ const d = Math.abs(X(r[0]) - cx); if(d < bd){ bd = d; best = r; } }
+    const x = X(best[0]); cur.setAttribute("x1",x); cur.setAttribute("x2",x); cur.setAttribute("opacity",.5);
+    dot.setAttribute("cx",x); dot.setAttribute("cy",Y(conv(best[1]))); dot.setAttribute("opacity",1);
+    hv.textContent = `${tl(best[0])} · ${fmt(best[1]/10)}${best[2]!=null?" / "+fmt(best[2]/10):""} ${unit} ${best[3]!=null?card(best[3]):""}`;
+  };
+  svg.addEventListener("mousemove",show); svg.addEventListener("touchmove",show,{passive:true}); svg.addEventListener("touchstart",show,{passive:true});
+}
+
 function openStation(s){ L.popup({offset:[0,-4]}).setLatLng([s.lat,s.lon]).setContent(popup(s)).openOn(map); }
 
 /* ============ RENDER ============ */
@@ -486,6 +542,7 @@ function popup(s){
     if(s.manual) h+=`<tr><td colspan="2" style="color:#b3362b">Manual snapshot, not live</td></tr>`;
   }
   h+="</table>"; if(s.alt!=null) h+=`<div style="color:#5d6f78">${s.alt} m</div>`;
+  h+=`<div class="hist" data-sid="${esc(s.id)}"></div>`;
   if(s.url) h+=`<div><a href="${s.url}" target="_blank" rel="noopener">Open source page</a></div>`;
   return h;
 }
@@ -582,6 +639,7 @@ $("#lowOnly").addEventListener("change",render);
 $("#thin").addEventListener("change",redraw);
 $("#region").addEventListener("change",refresh);
 map.on("zoomend moveend",redrawSoon);
+map.on("popupopen",e=>{ const el=e.popup.getElement(), box=el&&el.querySelector(".hist"); if(box) initHist(box); });
 function showWidget(on){
   $("#widget").hidden = !on; $("#widgetOpen").hidden = on;
   try{ localStorage.setItem("widgetOpen", on ? "1" : "0"); }catch(e){}
