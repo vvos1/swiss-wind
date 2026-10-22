@@ -65,7 +65,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,380px) 
     <span id="unitToggle" role="group" aria-label="Wind unit" style="display:inline-flex;border:1px solid #8aa0ab;border-radius:8px;overflow:hidden;font-size:13px">
       <button type="button" data-u="kn" style="border:0;padding:5px 12px;cursor:pointer">kn</button><button type="button" data-u="kmh" style="border:0;border-left:1px solid #8aa0ab;padding:5px 12px;cursor:pointer">km/h</button></span><input type="hidden" id="unit" value="kn">
     <label>Area <select id="region"><option value="all">All Switzerland</option><option value="near">Vaud &amp; lakes</option></select></label>
-    <label><input type="checkbox" id="lowOnly" checked> Below 700 m only</label>
+    <label><input type="checkbox" id="lowOnly"> Below 700 m only</label>
+    <label><input type="checkbox" id="thin" checked> Thin out when zoomed out</label>
     <button id="refresh" type="button">Refresh</button>
   </div>
   <div id="status"></div>
@@ -425,10 +426,11 @@ function popup(s){
 // Zoomed out you see the important stations; zooming in frees up space and more appear.
 const PRIORITY = s => {
   const base = /Wunderground|YvBeach|VD8|Ichtus|CVN|Cudrefin/.test(s.src) ? 0 : s.src==="MeteoSwiss" ? 1 : s.src==="OpenWindMap" ? 2 : /METAR/.test(s.src) ? 3 : 4;
-  return base + ((s.avg==null || ageMin(s.ts)>staleLimit(s)) ? 10 : 0);   // dead or stale stations never win a spot over a live one
+  return base === 0 ? 0 : base + ((s.avg==null || ageMin(s.ts)>staleLimit(s)) ? 10 : 0);   // dead or stale stations never win a spot over a live one
 };
 function pickShown(list){
-  const bounds = map.getBounds().pad(0.15), CELL = 42, taken = new Map(), out = [];
+  const bounds = map.getBounds().pad(0.15), CELL = 30, taken = new Map(), out = [];
+  if(!$("#thin").checked) return list.filter(s=>bounds.contains([s.lat,s.lon]));
   const order = list.filter(s=>bounds.contains([s.lat,s.lon])).map(s=>({s,p:PRIORITY(s)})).sort((a,b)=>a.p-b.p || String(a.s.id).localeCompare(b.s.id));
   for(const {s} of order){
     const pt = map.latLngToContainerPoint([s.lat,s.lon]), cx = Math.floor(pt.x/CELL), cy = Math.floor(pt.y/CELL);
@@ -518,6 +520,7 @@ function setUnit(u){
 document.querySelectorAll("#unitToggle button").forEach(b=>b.addEventListener("click",()=>setUnit(b.dataset.u)));
 { let u="kn"; try{u=localStorage.getItem("windUnit")||"kn";}catch(e){} if(!UNITS[u]||u==="ms") u="kn"; setUnit(u); }
 $("#lowOnly").addEventListener("change",render);
+$("#thin").addEventListener("change",redraw);
 $("#region").addEventListener("change",refresh);
 map.on("zoomend moveend",redrawSoon);
 $("#refresh").addEventListener("click",refresh);
