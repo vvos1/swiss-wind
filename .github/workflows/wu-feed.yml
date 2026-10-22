@@ -1,6 +1,6 @@
 name: wu-feed
 # Data (wu/yv/vd8/ichtus/swiss/history .json) goes to the "data" branch and is read straight from raw.githubusercontent.com.
-# The website itself (site/index.html) goes to gh-pages only when the page changes: publishing it every 100 s made GitHub Pages
+# The website itself (site/index.html) goes to gh-pages only when it differs from the live copy: publishing it every 100 s made GitHub Pages
 # cancel its own builds, which left the live site stuck on old data.
 on:
   schedule:
@@ -34,8 +34,9 @@ jobs:
               git add -A; git commit -q -m "update $(date -u +%FT%TZ)"
               git push -q -f "$REMOTE" "$2" )
           }
-          # 1) the website, only when this run was caused by a change to it
-          if [ "${{ github.event_name }}" = "push" ]; then push_dir site gh-pages; fi
+          # 1) the website: published whenever the live copy differs from site/index.html (a cancelled push run can't leave it stale)
+          git fetch -q --depth=1 origin gh-pages 2>/dev/null && git show FETCH_HEAD:index.html > /tmp/live-index.html 2>/dev/null || : > /tmp/live-index.html
+          if ! cmp -s site/index.html /tmp/live-index.html; then echo "publishing new page to gh-pages"; push_dir site gh-pages; fi
 
           mkdir -p data
           # 2) bring back the previous 24 h history from the data branch
