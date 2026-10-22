@@ -46,7 +46,9 @@ export function parseMetar(list) {
 }
 // winds.mobi aggregates many wind networks (Holfuy, FFVL, Windline, ...). Speeds km/h, ts epoch seconds.
 // Networks we already read directly are skipped so nothing is drawn twice.
-const DUP = /pioupiou|meteoswiss|yvbeach|metar|slf|ichtus|vd8/i;
+const DUP = /pioupiou|openwindmap|meteoswiss|yvbeach|metar|aviationweather|slf|ichtus|vd8/i;
+// Switzerland plus a border margin (Jura, Haute-Savoie, Black Forest edge, northern Italy), so French/neighbouring FFVL and Holfuy spots show up too
+const WINDS_BBOX = { s: 45.4, n: 48.2, w: 5.2, e: 10.9 };
 export function parseWinds(list, bbox) {
   const out = [];
   for (const st of list || []) {
@@ -93,10 +95,21 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-swiss.mjs")) {
   catch (e) { failed.push("metar:" + e.message); }
   let winds = [];
   try {
-    const raw = JSON.parse(await getText("https://winds.mobi/api/2/stations/?near-lat=46.8&near-lon=8.23&near-distance=230000&limit=1000"));
-    winds = parseWinds(raw, CH_BBOX);
+    // One big request comes back truncated, so cover the area with many small overlapping circles and merge by id.
+    const tiles = []; const R = 40000;
+    for (let lat = WINDS_BBOX.s; lat <= WINDS_BBOX.n + 0.2; lat += 0.45)
+      for (let lon = WINDS_BBOX.w; lon <= WINDS_BBOX.e + 0.3; lon += 0.65) tiles.push([lat, lon]);
+    const seen = new Map(); let tileFail = 0;
+    await pool(tiles, 5, async ([la, lo]) => {
+      try {
+        const raw = JSON.parse(await getText(`https://winds.mobi/api/2/stations/?near-lat=${la.toFixed(3)}&near-lon=${lo.toFixed(3)}&near-distance=${R}&limit=1000`));
+        for (const w of parseWinds(raw, WINDS_BBOX)) seen.set(w.id, w);
+      } catch (e) { tileFail++; }
+    });
+    winds = [...seen.values()];
     const by = {}; for (const w of winds) by[w.provider] = (by[w.provider] || 0) + 1;
-    console.log("winds.mobi:", raw.length, "stations returned,", winds.length, "kept; by provider", JSON.stringify(by));
+    console.log(`winds.mobi: ${tiles.length} tiles (${tileFail} failed), ${winds.length} stations kept; by provider`, JSON.stringify(by));
+    if (tileFail > tiles.length / 2) failed.push("winds.mobi: " + tileFail + " tile failures");
   } catch (e) { failed.push("winds.mobi:" + e.message); }
   if (!smn.length && !piou.length) throw new Error("nothing fetched: " + failed.slice(0, 5).join("; "));
   await writeFile(out + ".tmp", JSON.stringify({ generated: Date.now(), smn, piou, slf, metar, winds }));
