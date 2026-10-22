@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vaud Wind Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: full-height map with a station rail on the left; stacks on phones. */
+:root{
+  --bg:#f3f5f6; --panel:#ffffff; --fg:#14232b; --muted:#5d6f78; --line:#d9e0e3; --accent:#0b6e8a;
+  --ok:#2e8b57; --warn:#c77a00; --bad:#b3362b;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a20;--panel:#16252d;--fg:#e4edf0;--muted:#8fa4ad;--line:#294049;--accent:#5cc3de;--ok:#5fcf93;--warn:#e8a63a;--bad:#ef7a6e;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--sans);display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;align-items:center;padding:.6rem 1rem;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:1.05rem;margin:0;font-weight:600;letter-spacing:.01em}
+.ctl{display:flex;gap:.9rem;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:.85rem}
+.ctl label{display:flex;gap:.35rem;align-items:center;cursor:pointer}
+select,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:.2rem .5rem}
+button{cursor:pointer}button:hover{border-color:var(--accent)}
+#status{margin-left:auto;font-family:var(--mono);font-size:.78rem;color:var(--muted);display:flex;gap:.9rem;flex-wrap:wrap}
+#status .ok{color:var(--ok)}#status .bad{color:var(--bad)}
+main{flex:1;min-height:0;position:relative}
+#widget{position:absolute;right:12px;top:56px;width:340px;max-width:calc(100% - 24px);max-height:calc(100% - 110px);display:flex;flex-direction:column;z-index:1100;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.28);overflow:hidden}
+#widget[hidden],#widgetOpen[hidden]{display:none}
+#widgetHead{display:flex;align-items:center;justify-content:space-between;padding:.45rem .6rem .45rem .9rem;border-bottom:1px solid var(--line);font-weight:600;font-size:.85rem}
+#widgetHead button{border:0;background:none;font-size:1rem;line-height:1;padding:.2rem .4rem;color:var(--muted)}
+#widgetOpen{position:absolute;right:12px;top:56px;z-index:1100;box-shadow:0 2px 8px rgba(0,0,0,.3);border-radius:8px;padding:.4rem .7rem;font-weight:500}
+#rail{overflow:auto;min-width:0;flex:1}
+#map{position:absolute;inset:0;background:#cfd8dc}
+.sec{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:.7rem .9rem .3rem;position:sticky;top:0;background:var(--panel);z-index:2}
+.row{display:grid;grid-template-columns:34px 1fr auto;gap:.15rem .7rem;padding:.55rem .9rem;border-top:1px solid var(--line);cursor:pointer;align-items:center}
+.row:hover{background:var(--bg)}
+.row.stale{opacity:.55}
+.arrow{width:34px;height:34px}
+.nm{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{color:var(--muted);font-size:.78rem;font-family:var(--mono)}
+.val{font-family:var(--mono);text-align:right;font-size:.95rem;font-weight:500}
+.val small{display:block;color:var(--muted);font-weight:400;font-size:.74rem}
+.tag{display:inline-block;font-size:.66rem;padding:0 .35rem;border:1px solid var(--line);border-radius:3px;margin-left:.35rem;color:var(--muted);vertical-align:1px;font-family:var(--mono)}
+.err{padding:.6rem .9rem;color:var(--bad);font-size:.82rem;border-top:1px solid var(--line)}
+.note{padding:.6rem .9rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--line)}
+.wm{position:relative;width:46px;height:46px;display:flex;flex-direction:column;align-items:center}
+.wm svg{width:34px;height:34px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))}
+.wm b{font:600 11px/1 var(--mono);background:rgba(255,255,255,.92);color:#14232b;border-radius:8px;padding:2px 5px;margin-top:-4px;box-shadow:0 1px 2px rgba(0,0,0,.3);white-space:nowrap}
+.wm.stale{opacity:.5}
+.spot{width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid #fff;box-shadow:0 0 0 1px var(--accent)}
+.leaflet-popup-content{font:13px/1.45 var(--sans);min-width:270px}
+.hist{margin-top:.5rem;border-top:1px solid #d9e0e3;padding-top:.35rem;color:#14232b}
+.hist svg{display:block;width:100%;height:auto;touch-action:none}
+.hbar{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#5d6f78;min-height:20px}
+.hbar button{padding:0 .4rem;font-size:11px;margin-left:.2rem;background:#fff;color:#14232b;border:1px solid #d9e0e3;border-radius:4px;cursor:pointer}
+.hbar button.on{border-color:#0b6e8a;color:#0b6e8a;font-weight:600}
+.hmsg{font-size:12px;color:#5d6f78;padding:.3rem 0}
+.leaflet-popup-content table{border-collapse:collapse;width:100%}
+.leaflet-popup-content td{padding:1px 0}.leaflet-popup-content td:last-child{text-align:right;font-family:var(--mono)}
+.legend{background:rgba(255,255,255,.93);color:#14232b;padding:.4rem .6rem;border-radius:4px;font:11px/1.2 var(--mono);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.legend i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:-1px}
+@media (max-width:760px){
+  #widget{max-height:45%;top:auto;bottom:34px}#widgetOpen{top:auto;bottom:34px}
+  #status{margin-left:0}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Vaud Wind Map</h1>
+  <div class="ctl">
+    <span id="unitToggle" role="group" aria-label="Wind unit" style="display:inline-flex;border:1px solid #8aa0ab;border-radius:8px;overflow:hidden;font-size:13px">
+      <button type="button" data-u="kn" style="border:0;padding:5px 12px;cursor:pointer">kn</button><button type="button" data-u="kmh" style="border:0;border-left:1px solid #8aa0ab;padding:5px 12px;cursor:pointer">km/h</button></span><input type="hidden" id="unit" value="kn">
+    <label>Area <select id="region"><option value="all">All Switzerland</option><option value="near">Vaud &amp; lakes</option></select></label>
+    <label><input type="checkbox" id="lowOnly"> Below 700 m only</label>
+    <label><input type="checkbox" id="thin" checked> Thin out when zoomed far out</label>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
+  <div id="status"></div>
+</header>
+<main>
+  <div id="map"></div>
+  <button id="widgetOpen" type="button" hidden>&#9776; Stations</button>
+  <section id="widget" aria-label="Stations in view" hidden>
+    <div id="widgetHead"><span>Stations &amp; spots</span><button id="widgetClose" type="button" aria-label="Close">&#10005;</button></div>
+    <aside id="rail"></aside>
+  </section>
+</main>
+
+<div id="fatal" hidden style="position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#b3362b;color:#fff;padding:.6rem 1rem;font:12px/1.4 monospace;white-space:pre-wrap"></div>
+<script>
+/* Show any uncaught error on the page instead of failing silently. */
+(function(){
+  function show(m){ var f=document.getElementById("fatal"); if(!f) return; f.hidden=false; f.textContent+=(f.textContent?"\n":"")+m; }
+  window.addEventListener("error",function(e){ show("Error: "+(e.message||"unknown")+(e.filename?" ("+e.filename.split("/").pop()+":"+e.lineno+")":"")); });
+  window.addEventListener("unhandledrejection",function(e){ show("Unhandled: "+(e.reason&&e.reason.message||e.reason)); });
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+if (typeof L === "undefined") {
+  var f=document.getElementById("fatal"); f.hidden=false;
+  f.textContent="The map library (Leaflet) did not load from cdnjs.cloudflare.com. Open this file in a normal browser tab with internet access, not in an embedded preview.";
+  throw new Error("Leaflet not loaded");
+}
+/* ============ CONFIG ============ */
+const staleLimit = s => s.staleMin || STALE_MIN;   // slower sources (airport METAR, SLF 30-min means) get a longer allowance
+const STALE_MIN = 40;            // greyed out when older than this
+const REFRESH_MS = 2 * 60 * 1000;    // re-poll every 2 min (MeteoSwiss itself updates every 10 min; wu.json about every 5)
+const PIOU_BBOX = {s:45.8, n:47.85, w:5.9, e:10.55};   // OpenWindMap beacons inside this box are picked up automatically
+
+// MeteoSwiss SwissMetNet stations (from ogd-smn_meta_stations.csv, listed A to R). The page also reads the live
+// station list at startup and adds any station that is missing here (S to Z). Source: MeteoSwiss
+const STATION_DATA = `ABO|Adelboden|46.491703|7.560703|1321|BE
+AEG|Oberägeri|47.133636|8.608206|724|ZG
+AIG|Aigle|46.326647|6.924472|381|VD
+ALT|Altdorf|46.887069|8.621894|438|UR
+AND|Andeer|46.610139|9.431981|987|GR
+ANT|Andermatt|46.630914|8.580553|1435|UR
+ARH|Altenrhein|47.483631|9.56685|398|SG
+ARO|Arosa|46.792661|9.679014|1878|GR
+ATT|Les Attelas|46.0991|7.26865|2734|VS
+BAN|Bantiger|46.977806|7.528667|942|BE
+BAS|Basel / Binningen|47.541142|7.583525|316|BL
+BEH|Passo del Bernina|46.409158|10.019567|2260|GR
+BER|Bern / Zollikofen|46.990744|7.464061|553|BE
+BEZ|Beznau|47.557256|8.233325|326|AG
+BIA|Biasca|46.336053|8.978197|278|TI
+BIE|Bière|46.524908|6.342386|684|VD
+BIN|Binn|46.367661|8.192306|1479|VS
+BIV|Bivio|46.462494|9.668639|1856|GR
+BIZ|Bischofszell / Sitterdorf|47.508828|9.266797|507|TG
+BLA|Blatten, Lötschental|46.422261|7.825914|1548|VS
+BOL|Boltigen|46.623519|7.384206|820|BE
+BOU|Bouveret|46.393447|6.857006|374|VS
+BRL|La Brévine|46.983844|6.610297|1050|NE
+BRZ|Brienz|46.740719|8.060864|567|BE
+BUF|Buffalora|46.648408|10.2672|1971|GR
+BUS|Buchs / Aarau|47.384381|8.07955|387|AG
+CDF|La Chaux-de-Fonds|47.082947|6.792314|1017|NE
+CDM|Col des Mosses|46.391525|7.098239|1412|VD
+CEV|Cevio|46.320486|8.603161|417|TI
+CGI|Nyon / Changins|46.401053|6.227722|458|VD
+CHA|Chasseral|47.131761|7.054367|1594|BE
+CHB|Les Charbonnières|46.67015|6.312428|1045|VD
+CHD|Château-d'Oex|46.479819|7.139656|1028|VD
+CHM|Chaumont|47.049169|6.978825|1136|NE
+CHU|Chur|46.870572|9.530761|556|GR
+CHZ|Cham|47.188278|8.464642|443|ZG
+CIM|Cimetta|46.200467|8.79165|1661|TI
+CMA|Crap Masegn|46.842275|9.180042|2468|GR
+COM|Acquarossa / Comprovasco|46.459517|8.935486|575|TI
+COV|Piz Corvatsch|46.418039|9.821308|3294|GR
+COY|Courtelary|47.180811|7.090656|695|BE
+CRM|Cressier|47.047581|7.059147|430|NE
+DAV|Davos|46.812969|9.843558|1594|GR
+DEM|Delémont|47.351706|7.349567|439|JU
+DIA|Les Diablerets|46.32675|7.203781|2964|VD
+DIS|Disentis|46.706569|8.853478|1197|GR
+DOL|La Dôle|46.424794|6.099453|1670|VD
+EBK|Ebnat-Kappel|47.273389|9.108494|623|SG
+EGH|Eggishorn|46.426528|8.092728|2892|VS
+EGO|Egolzwil|47.179428|8.004758|522|LU
+EIN|Einsiedeln|47.133042|8.756556|911|SZ
+ELM|Elm|46.923742|9.175347|958|GL
+ENG|Engelberg|46.821639|8.410514|1036|OW
+EVI|Evionnaz|46.182953|7.026747|482|VS
+EVO|Evolène / Villa|46.112211|7.508631|1825|VS
+FAH|Fahy|47.423814|6.941194|596|JU
+FLU|Flühli, LU|46.889436|8.020336|940|LU
+FRE|Bullet / La Frétaz|46.840622|6.576369|1205|VD
+FRU|Frutigen|46.599003|7.657542|756|BE
+GEN|Monte Generoso|45.927592|9.017875|1600|TI
+GES|Gersau|46.996069|8.523442|521|SZ
+GIH|Giswil|46.849447|8.190225|471|OW
+GLA|Glarus|47.034586|9.066961|517|GL
+GOE|Gösgen|47.363147|7.973733|380|SO
+GOR|Gornergrat|45.983644|7.785944|3129|VS
+GOS|Göschenen|46.692678|8.595364|950|UR
+GRA|Fribourg / Grangeneuve|46.7714|7.113736|651|FR
+GRC|Grächen|46.195314|7.836822|1605|VS
+GRE|Grenchen|47.179097|7.415144|428|SO
+GRH|Grimsel Hospiz|46.571689|8.333256|1980|BE
+GRO|Grono|46.255075|9.163758|324|GR
+GSB|Col du Grand St-Bernard|45.869092|7.170683|2472|VS
+GUE|Gütsch, Andermatt|46.652475|8.615531|2286|UR
+GUT|Güttingen|47.601733|9.279428|440|TG
+GVE|Genève / Cointrin|46.247519|6.127742|411|GE
+HAI|Salen-Reutenen|47.651242|9.023911|719|TG
+HLL|Hallau|47.697278|8.470464|419|SH
+HOE|Hörnli|47.370864|8.941644|1133|ZH
+ILZ|Ilanz|46.775039|9.215353|698|GR
+INT|Interlaken|46.672033|7.87045|578|BE
+JUN|Jungfraujoch|46.547556|7.985444|3571|VS
+KLO|Zürich / Kloten|47.479611|8.535961|426|ZH
+KOP|Koppigen|47.11885|7.605503|485|BE
+LAC|Lachen / Galgenen|47.179197|8.858686|468|SZ
+LAE|Lägern|47.481933|8.397222|845|ZH
+LAG|Langnau i.E.|46.939633|7.806425|744|BE
+LAT|Bergün / Latsch|46.627275|9.753706|1408|GR
+LEI|Leibstadt|47.597361|8.1882|341|AG
+LUG|Lugano|46.004217|8.960322|273|TI
+LUZ|Luzern|47.036439|8.301022|454|LU
+MAG|Magadino / Cadenazzo|46.160025|8.933672|203|TI
+MAH|Mathod|46.736978|6.567983|435|VD
+MAR|Les Marécottes|46.118903|7.016597|990|VS
+MAS|Marsens|46.656486|7.069669|715|FR
+MER|Meiringen|46.732222|8.169247|589|BE
+MLJ|Le Moléson / Les Joux|46.561147|7.016419|1275|FR
+MLS|Le Moléson|46.546197|7.017753|1974|FR
+MOA|Mosen|47.243847|8.232831|453|LU
+MOB|Montagnier, Bagnes|46.071019|7.225272|839|VS
+MOE|Möhlin|47.572197|7.877911|343|AG
+MTE|Mottec|46.147897|7.624033|1580|VS
+MTR|Matro|46.410103|8.924742|2171|TI
+MUB|Mühleberg|46.973278|7.278217|480|BE
+MVE|Montana|46.298806|7.460814|1423|VS
+NAP|Napf|47.004667|7.940117|1404|BE
+NAS|Naluns / Schlivera|46.817164|10.2614|2380|GR
+NEU|Neuchâtel|47.000067|6.953297|485|NE
+OBR|Oberriet / Kriessern|47.376608|9.612706|409|SG
+ORO|Oron|46.572269|6.858239|828|VD
+OTL|Locarno / Monti|46.172256|8.787494|367|TI
+PAY|Payerne|46.811581|6.942469|490|VD
+PFA|Pfäffikon, ZH|47.376817|8.754864|537|ZH
+PIL|Pilatus|46.978869|8.252256|2105|OW
+PIO|Piotta|46.514811|8.688039|990|TI
+PLF|Plaffeien|46.747717|7.266264|1042|FR
+PMA|Piz Martegnas|46.577181|9.529544|2668|GR
+PRE|St-Prex|46.483683|6.443|425|VD
+PSI|Würenlingen / PSI|47.536475|8.226944|334|AG
+PUY|Pully|46.512283|6.667517|456|VD
+QUI|Quinten|47.128739|9.21605|419|SG
+RAG|Bad Ragaz|47.016631|9.502594|497|SG
+REH|Zürich / Affoltern|47.427694|8.517953|444|ZH
+ROB|Poschiavo / Robbia|46.347217|10.063031|1078|GR
+ROE|Robièi|46.443067|8.513389|1898|TI
+RUE|Rünenberg|47.434572|7.879414|611|BL`;
+function parseStations(txt){
+  return txt.trim().split("\n").map(l=>l.split("|")).map(([code,name,lat,lon,alt,canton])=>
+    ({id:"smn:"+code,code,name,lat:+lat,lon:+lon,alt:+alt,canton,src:"MeteoSwiss"}));
+}
+let SMN_ALL = parseStations(STATION_DATA);
+async function augmentStations(){
+  try{
+    const r = await fetch("https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/ogd-smn_meta_stations.csv");
+    if(!r.ok) return;
+    const txt = new TextDecoder("windows-1252").decode(await r.arrayBuffer());
+    const lines = txt.trim().split(/\r?\n/), head = lines[0].split(";");
+    const ix = n=>head.indexOf(n), have = new Set(SMN_ALL.map(s=>s.code));
+    for(const l of lines.slice(1)){
+      const c = l.split(";"), code = c[ix("station_abbr")], lat = parseFloat(c[ix("station_coordinates_wgs84_lat")]), lon = parseFloat(c[ix("station_coordinates_wgs84_lon")]);
+      if(!code || have.has(code) || isNaN(lat) || isNaN(lon)) continue;
+      SMN_ALL.push({id:"smn:"+code,code,name:c[ix("station_name")],lat,lon,alt:parseFloat(c[ix("station_height_masl")]),canton:c[ix("station_canton")],src:"MeteoSwiss"});
+    }
+  }catch(e){ /* keep the embedded list */ }
+}
+const HOME = {lat:46.75,lon:6.75};
+const inRegion = s => $("#region").value==="all" || hav(HOME,s) <= 90;   // km around the Vaud lakes
+async function pool(items,n,fn){ let i=0; await Promise.all(Array.from({length:n},async()=>{ while(i<items.length) await fn(items[i++]); })); }
+
+// Wunderground live feed: leave empty to use the manual snapshots. See wu-worker.js (Cloudflare Worker) or scrape-wu.mjs.
+// Data files are written by the scheduled job to the "data" branch and read straight from GitHub's raw host (CORS-enabled, updates on every commit).
+// The ?t= minute stamp keeps the CDN from serving a copy older than about a minute.
+const DATA_BASE = "https://raw.githubusercontent.com/vvos1/swiss-wind/data/";
+const dataUrl = f => DATA_BASE + f + "?t=" + Math.floor(Date.now()/60000);
+const WU_FEED_URL = "wu.json";
+
+// Wunderground: no open API without a key, so these are manual snapshots read from the public dashboards (22 Oct 2026, ~11:30).
+const WU = [
+ {id:"wu:IVAUD1",name:"Bellerive (IVAUD1)",lat:46.511,lon:6.604,alt:113,url:"https://www.wunderground.com/dashboard/pws/IVAUD1",
+  snap:{ts:"2026-10-22T11:29:00+02:00",avg:9.0,gust:10.5,dir:206}},
+ {id:"wu:IPRVER1",name:"Préverenges (IPRVER1)",lat:46.511,lon:6.536,alt:374,url:"https://www.wunderground.com/dashboard/pws/IPRVER1",
+  snap:{ts:"2026-10-22T11:30:00+02:00",avg:0,gust:0,dir:204}},
+ {id:"wu:IVAUDSTS2",name:"Laviau (IVAUDSTS2)",lat:46.51,lon:6.55,alt:380,url:"https://www.wunderground.com/dashboard/pws/IVAUDSTS2",snap:null,offlineNote:"Offline when checked"}
+].map(s=>({...s,src:"Wunderground"}));
+
+// Spots you named. Positions are approximate; refine as needed.
+const SPOTS = [
+ {name:"Yvonand, Plage des Pins",lat:46.8085,lon:6.7456},
+ {name:"Portalban",lat:46.9330,lon:6.9660},
+ {name:"Cudrefin",lat:46.9540,lon:7.0180},
+ {name:"Saint-Blaise",lat:47.0100,lon:6.9900},
+ {name:"Vevey",lat:46.4619,lon:6.8316}
+];
+
+/* ============ HELPERS ============ */
+const $ = s => document.querySelector(s);
+const state = { stations:new Map(), errors:[], updated:null };
+const UNITS = { kn:{f:v=>v/1.852,l:"kn"}, kmh:{f:v=>v,l:"km/h"}, ms:{f:v=>v/3.6,l:"m/s"} };
+const fmt = v => v==null||isNaN(v) ? "–" : (UNITS[$("#unit").value].f(v)).toFixed(UNITS[$("#unit").value].l==="m/s"?1:0);
+const U = () => UNITS[$("#unit").value].l;
+const kn = v => v/1.852;
+const CARD = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const card = d => d==null ? "–" : CARD[Math.round(((d%360)/22.5))%16];
+const STOPS = [[0,"#8aa0ab"],[4,"#4fa3c7"],[8,"#35a77a"],[12,"#9bbf3a"],[16,"#e0b000"],[20,"#e07b00"],[25,"#d23c2f"],[32,"#8e2a9c"]];
+function colorFor(kmh){ const k=kn(kmh); let c=STOPS[0][1]; for(const [t,col] of STOPS) if(k>=t) c=col; return c; }
+function ageMin(ts){ return ts ? (Date.now()-ts)/60000 : Infinity; }
+function ago(ts){ const m=ageMin(ts); if(!isFinite(m)) return "no data"; return m<1?"just now":m<90?Math.round(m)+" min ago":Math.round(m/60)+" h ago"; }
+function hav(a,b){ const R=6371,r=Math.PI/180,dl=(b.lat-a.lat)*r,dn=(b.lon-a.lon)*r;
+  const x=Math.sin(dl/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(x)); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function parseUTC(s){ // dd.mm.yyyy HH:MM (UTC)
+  const m=/(\d\d)\.(\d\d)\.(\d{4}) (\d\d):(\d\d)/.exec(s); return m ? Date.UTC(+m[3],+m[2]-1,+m[1],+m[4],+m[5]) : null; }
+const num = v => (v===""||v==null) ? null : parseFloat(v);
+
+/* ============ ADAPTERS ============ */
+async function loadSMN(st){
+  const url = `https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/${st.code.toLowerCase()}/ogd-smn_${st.code.toLowerCase()}_t_now.csv`;
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const lines = (await r.text()).trim().split(/\r?\n/);
+  const head = lines[0].split(";"), ix = n => head.indexOf(n);
+  const iT=ix("reference_timestamp"), iA=ix("fu3010z0"), iG=ix("fu3010z1"), iD=ix("dkl010z0"), iTemp=ix("tre200s0");
+  const rows = lines.slice(1).map(l=>l.split(";")).map(c=>({ts:parseUTC(c[iT]),avg:num(c[iA]),gust:num(c[iG]),dir:num(c[iD]),temp:num(c[iTemp])}))
+    .filter(x=>x.ts && x.avg!=null);
+  if(!rows.length) throw new Error("no wind rows");
+  const last = rows[rows.length-1];
+  return {...st, ...last, hist: rows.slice(-13)};
+}
+async function loadPiou(){
+  const r = await fetch("https://api.pioupiou.fr/v1/live-with-meta/all");
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j = await r.json();
+  return j.data.filter(d=>d.location&&d.location.success&&d.location.latitude>=PIOU_BBOX.s&&d.location.latitude<=PIOU_BBOX.n&&
+      d.location.longitude>=PIOU_BBOX.w&&d.location.longitude<=PIOU_BBOX.e&&d.measurements&&d.measurements.wind_speed_avg!=null)
+    .map(d=>({id:"pp:"+d.id,name:d.meta.name||("Pioupiou "+d.id),lat:d.location.latitude,lon:d.location.longitude,alt:null,src:"OpenWindMap",
+      ts:Date.parse(d.measurements.date),avg:d.measurements.wind_speed_avg,gust:d.measurements.wind_speed_max,dir:d.measurements.wind_heading,hist:null,
+      url:"https://www.openwindmap.org/PP"+d.id}));
+}
+async function loadWU(){
+  const base = WU.map(s=>{ const o={...s}; if(s.snap){ o.ts=Date.parse(s.snap.ts); o.avg=s.snap.avg; o.gust=s.snap.gust; o.dir=s.snap.dir; o.manual=true; } return o; });
+  if(!WU_FEED_URL) return base;
+  const r = await fetch(dataUrl(WU_FEED_URL));
+  if(!r.ok) throw new Error("Wunderground feed HTTP "+r.status);
+  const feed = await r.json();                      // [{id, ts, avg, gust, dir, temp}]  speeds in km/h, ts in ms
+  return base.map(o=>{ const f = feed.find(x=>"wu:"+x.id===o.id); if(!f || f.avg==null) return o;
+    return {...o, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, manual:false, offlineNote:undefined}; });
+}
+
+// Feeds written by the scheduled scraper. Each file holds one object or an array of {id, ts, avg, gust, dir, temp, pressure} (km/h, ts in ms).
+const FEEDS = [
+ {file:"yv.json",  label:"YvBeach", sts:{YVBEACH:{id:"yv:YVBEACH",name:"YvBeach",lat:46.8085,lon:6.7456,alt:null,src:"YvBeach",url:"https://www.yvbeach.com/yvmeteo.htm"}}},
+ {file:"vd8.json", label:"VD8",     sts:{VD8:{id:"vd8:VD8",name:"VD8 (camping)",lat:46.790,lon:6.740,alt:430,src:"VD8",url:"http://www.vd8.ch/meteo/"}}},
+ {file:"ichtus.json", label:"Ichtus/CVN", sts:{
+   ICHTUS:{id:"ich:ICHTUS",name:"Ichtus (St-Blaise)",lat:47.005,lon:6.993,alt:null,src:"Ichtus",url:"http://webcam.ichtus.ch:8888/IW/WindMSChartMulipleValues.aspx"},
+   CVN:{id:"ich:CVN",name:"CVN (Nid-du-Crô)",lat:46.989,lon:6.962,alt:null,src:"CVN via Ichtus",url:"https://holfuy.com/en/weather/1020"},
+   CUDREFIN:{id:"ich:CUDREFIN",name:"Cudrefin",lat:46.954,lon:7.018,alt:null,src:"Cudrefin via Ichtus",url:"https://letskite.ch/spots/82/kitesurf/cudrefin/"}}}
+];
+async function loadFeed(fd){
+  const r = await fetch(dataUrl(fd.file));
+  if(!r.ok) throw new Error(fd.label+" feed HTTP "+r.status);
+  const j = await r.json(), arr = Array.isArray(j) ? j : [j], res = [];
+  for(const f of arr){ const st = fd.sts[f.id]; if(st && f.avg!=null) res.push({...st, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, hist:null}); }
+  if(!res.length) throw new Error(fd.label+": no wind value");
+  return res;
+}
+
+// One file with every MeteoSwiss + OpenWindMap station, built by the scheduled job (so visitors don't download ~160 CSVs)
+async function loadSwissFeed(){
+  const r = await fetch(dataUrl("swiss.json"));
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j = await r.json();
+  if(!j.smn || !j.smn.length) throw new Error("empty");
+  if(j.generated && Date.now()-j.generated > 25*60*1000) throw new Error("aggregate is stale");   // scheduled job not running: go straight to the sources instead
+  return [
+    ...j.smn.map(d=>({...d, id:"smn:"+d.code, src:"MeteoSwiss"})),
+    ...(j.slf||[]).map(d=>({id:"slf:"+d.code,name:d.name,lat:d.lat,lon:d.lon,alt:d.alt,src:"SLF IMIS (30-min mean)",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:75,url:"https://whiterisk.ch/en/conditions"})),
+    ...(j.metar||[]).map(d=>({id:"metar:"+d.id,name:d.name+" ("+d.id+")",lat:d.lat,lon:d.lon,alt:d.alt,src:"METAR airport",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:100,url:"https://aviationweather.gov/data/metar/?ids="+d.id})),
+    ...(j.winds||[]).map(d=>({id:"wm:"+d.id,name:d.name,lat:d.lat,lon:d.lon,alt:d.alt,src:"winds.mobi · "+(d.provider||"network"),ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:60,url:"https://winds.mobi/stations/"+encodeURIComponent(d.id)})),
+    ...j.piou.map(d=>({id:"pp:"+d.id,name:d.name,lat:d.lat,lon:d.lon,alt:null,src:"OpenWindMap",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,hist:null,url:"https://www.openwindmap.org/PP"+d.id}))
+  ];
+}
+
+async function refresh(){
+  $("#refresh").disabled = true; histPromise = null;
+  if(!state.augmented){ state.augmented = true; await augmentStations(); }
+  const errors=[], out=[];
+  let feed = null;
+  try{ feed = (await loadSwissFeed()).filter(inRegion); }catch(e){ /* no aggregate yet: fall back to fetching every station from the browser */ }
+  const jobs = [];
+  if(feed){ out.push(...feed); }
+  else {
+    const todo = SMN_ALL.filter(inRegion); let done=0;
+    jobs.push(
+      pool(todo, 8, async st=>{
+        try{ out.push(await loadSMN(st)); }catch(e){ errors.push(`${st.code}: ${e.message}`); }
+        $("#status").textContent = `loading MeteoSwiss ${++done}/${todo.length}…`;
+      }),
+      loadPiou().then(a=>out.push(...a.filter(inRegion))).catch(e=>errors.push("OpenWindMap: "+e.message)));
+  }
+  jobs.push(
+    ...FEEDS.map(fd=>loadFeed(fd).then(x=>out.push(...x)).catch(e=>errors.push(String(e.message||e)))),
+    loadWU().then(a=>out.push(...a)).catch(e=>{ errors.push(String(e.message||e)); out.push(...WU.map(s=>({...s}))); }));
+  await Promise.all(jobs);
+  state.stations = new Map(out.map(s=>[s.id,s])); state.errors = errors; state.updated = Date.now();
+  render(); $("#refresh").disabled = false;
+}
+
+/* ============ INDICATORS ============ */
+function trend(s){
+  if(!s.hist || s.hist.length<6) return null;
+  const h=s.hist, a=h.slice(-3), b=h.slice(-6,-3);
+  const m=x=>x.reduce((t,r)=>t+r.avg,0)/x.length;
+  return kn(m(a))-kn(m(b));                      // knots, last 30 min vs the 30 min before
+}
+const trendGlyph = t => t==null ? "" : t>1.5 ? "↑" : t<-1.5 ? "↓" : "→";
+const gustFactor = s => s.avg>2 && s.gust!=null ? s.gust/s.avg : null;
+function spark(s){
+  if(!s.hist) return "";
+  const h=s.hist, W=84, H=24, mx=Math.max(...h.map(r=>r.gust??r.avg),1);
+  const px=i=>(i/(h.length-1))*W, py=v=>H-2-(v/mx)*(H-4);
+  const line=k=>h.map((r,i)=>`${i?"L":"M"}${px(i).toFixed(1)} ${py(r[k]??r.avg).toFixed(1)}`).join("");
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${line("gust")}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".6"/><path d="${line("avg")}" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>`;
+}
+const arrowSVG = (s,sz) => { const c=colorFor(s.avg), rot=((s.dir??0)+180)%360;
+  return `<svg viewBox="-20 -20 40 40" style="transform:rotate(${rot}deg)"><path d="M0 -17 L10 11 L0 5 L-10 11 Z" fill="${c}" stroke="#102028" stroke-width="1.4" stroke-linejoin="round"/></svg>`; };
+
+
+/* ============ CANVAS WIND LAYER (one <canvas> instead of hundreds of DOM markers: much lighter to pan/zoom) ============ */
+const WindCanvas = L.Layer.extend({
+  onAdd(map){
+    this._map = map; this._items = [];
+    const c = this._c = L.DomUtil.create("canvas", "leaflet-zoom-hide");
+    c.style.position = "absolute"; c.style.pointerEvents = "none";
+    map.getPane("markerPane").appendChild(c);
+    this._click = e => this._onClick(e); this._move = L.Util.throttle(e => this._onMove(e), 60, this);
+    map.on("click", this._click); map.on("mousemove", this._move);
+    this._reset();
+  },
+  onRemove(map){ L.DomUtil.remove(this._c); map.off("click", this._click); map.off("mousemove", this._move); },
+  getEvents(){ return {moveend:this._reset, zoomend:this._reset, resize:this._reset}; },
+  setItems(items){ this._items = items; this._reset(); },
+  _reset(){
+    const map = this._map, sz = map.getSize(), pad = 0.5, dpr = window.devicePixelRatio || 1;
+    const w = Math.round(sz.x*(1+2*pad)), h = Math.round(sz.y*(1+2*pad));   // drawn bigger than the screen so panning shows no blank edge
+    const c = this._c; c.width = w*dpr; c.height = h*dpr; c.style.width = w+"px"; c.style.height = h+"px";
+    this._tl = map.containerPointToLayerPoint([-sz.x*pad, -sz.y*pad]);
+    L.DomUtil.setPosition(c, this._tl);
+    const ctx = c.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    ctx.font = '600 11px ui-monospace, Menlo, Consolas, monospace'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for(const s of this._items.slice().reverse()){          // items arrive best-first: draw them last so they end up on top
+      const p = map.latLngToLayerPoint([s.lat,s.lon]).subtract(this._tl);
+      if(p.x < -40 || p.y < -40 || p.x > w+40 || p.y > h+40) continue;
+      this._draw(ctx, s, p.x, p.y);
+    }
+  },
+  _draw(ctx, s, x, y){
+    const stale = ageMin(s.ts) > staleLimit(s) || s.avg == null;
+    ctx.globalAlpha = stale ? 0.5 : 1;
+    if(s.avg == null){
+      ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fillStyle = "#8aa0ab"; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = "#102028"; ctx.stroke();
+    } else {
+      ctx.save(); ctx.translate(x, y); ctx.rotate((((s.dir ?? 0) + 180) % 360) * Math.PI/180); ctx.scale(0.85, 0.85);
+      ctx.beginPath(); ctx.moveTo(0,-17); ctx.lineTo(10,11); ctx.lineTo(0,5); ctx.lineTo(-10,11); ctx.closePath();
+      ctx.fillStyle = colorFor(s.avg); ctx.fill(); ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.strokeStyle = "#102028"; ctx.stroke(); ctx.restore();
+    }
+    const txt = s.avg == null ? "off" : fmt(s.avg) + (s.gust != null ? "/" + fmt(s.gust) : "");
+    const tw = ctx.measureText(txt).width + 10, ly = y + 19;
+    ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x - tw/2, ly - 8, tw, 16, 8); else ctx.rect(x - tw/2, ly - 8, tw, 16);
+    ctx.fill(); ctx.fillStyle = "#14232b"; ctx.fillText(txt, x, ly + 0.5);
+    ctx.globalAlpha = 1;
+  },
+  _hit(pt){
+    let best = null, bd = 26*26;
+    for(const s of this._items){ const q = this._map.latLngToContainerPoint([s.lat,s.lon]), dx = q.x-pt.x, dy = (q.y+6)-pt.y, d = dx*dx+dy*dy; if(d < bd){ bd = d; best = s; } }
+    return best;
+  },
+  _onClick(e){ const s = this._hit(e.containerPoint); if(s) openStation(s); },
+  _onMove(e){ this._map.getContainer().style.cursor = this._hit(e.containerPoint) ? "pointer" : ""; }
+});
+
+/* ============ STATION HISTORY (popup chart, data from history.json built by the scheduled job) ============ */
+let histPromise = null;
+const getHist = () => histPromise || (histPromise = fetch(dataUrl("history.json")).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).catch(e=>{ histPromise=null; throw e; }));
+function initHist(box){
+  let hours = 12; try{ hours = +localStorage.getItem("histHours") || 12; }catch(e){}
+  box.innerHTML = `<div class="hbar"><span class="hv">History</span><span>${[3,12,24].map(n=>`<button type="button" data-h="${n}">${n} h</button>`).join("")}</span></div><div class="hbody"><div class="hmsg">Loading history…</div></div>`;
+  const draw = h => drawHist(box, h, hours);
+  getHist().then(draw).catch(()=>{ box.querySelector(".hbody").innerHTML = `<div class="hmsg">No history available yet.</div>`; });
+  box.querySelectorAll("button[data-h]").forEach(b=>b.addEventListener("click",()=>{
+    hours = +b.dataset.h; try{ localStorage.setItem("histHours", hours); }catch(e){}
+    getHist().then(draw).catch(()=>{});
+  }));
+  box.querySelectorAll("button[data-h]").forEach(b=>b.classList.toggle("on", +b.dataset.h===hours));
+}
+function drawHist(box, h, hours){
+  box.querySelectorAll("button[data-h]").forEach(b=>b.classList.toggle("on", +b.dataset.h===hours));
+  const body = box.querySelector(".hbody"), hv = box.querySelector(".hv");
+  const nowMin = Math.round(Date.now()/60000), t0 = nowMin - hours*60;
+  const pts = (h.s[box.dataset.sid] || []).filter(r=>r[0] >= t0);
+  if(pts.length < 2){ body.innerHTML = `<div class="hmsg">History is still building up (${pts.length} reading${pts.length===1?"":"s"} so far).</div>`; hv.textContent = "History"; return; }
+  const conv = v => UNITS[$("#unit").value].f(v/10), unit = U();
+  const W=270, H=118, L=30, R=6, T=8, B=20, pw=W-L-R, ph=H-T-B;
+  let mx = 0; for(const r of pts) mx = Math.max(mx, conv(r[2] ?? r[1]), conv(r[1]));
+  const ymax = [5,10,15,20,25,30,40,50,60,80,100,150].find(v=>v>=mx*1.05) || Math.ceil(mx/50)*50;
+  const X = t => L + (t-t0)/(nowMin-t0)*pw, Y = v => T + ph - Math.min(v,ymax)/ymax*ph;
+  const GAP = 90;                                           // minutes without a reading before the line breaks
+  const line = (idx) => { let d="", prev=null; for(const r of pts){ if(r[idx]==null){ prev=null; continue; } const x=X(r[0]).toFixed(1), y=Y(conv(r[idx])).toFixed(1); d += (prev!=null && r[0]-prev<=GAP ? "L" : "M")+x+" "+y; prev=r[0]; } return d; };
+  const area = (() => { let d="", seg=[]; const flush=()=>{ if(seg.length>1) d += "M"+X(seg[0][0]).toFixed(1)+" "+(T+ph)+seg.map(r=>"L"+X(r[0]).toFixed(1)+" "+Y(conv(r[1])).toFixed(1)).join("")+"L"+X(seg[seg.length-1][0]).toFixed(1)+" "+(T+ph)+"Z"; seg=[]; };
+    for(const r of pts){ if(seg.length && r[0]-seg[seg.length-1][0] > GAP) flush(); seg.push(r); } flush(); return d; })();
+  const tl = t => new Date(t*60000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  let g = ""; for(const f of [0,0.5,1]){ const v = ymax*f, y = Y(v); g += `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#d9e0e3" stroke-width="1"/><text x="${L-4}" y="${y+3}" text-anchor="end" font-size="9" fill="#5d6f78">${Math.round(v)}</text>`; }
+  for(const [t,a] of [[t0,"start"],[Math.round((t0+nowMin)/2),"middle"],[nowMin,"end"]]) g += `<text x="${X(t)}" y="${H-5}" text-anchor="${a}" font-size="9" fill="#5d6f78">${t===nowMin?"now":tl(t)}</text>`;
+  body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind history">${g}
+    <path d="${area}" fill="#0b6e8a" opacity=".16"/><path d="${line(2)}" fill="none" stroke="#8aa0ab" stroke-width="1.2"/><path d="${line(1)}" fill="none" stroke="#0b6e8a" stroke-width="1.8" stroke-linejoin="round"/>
+    <line class="cur" y1="${T}" y2="${T+ph}" stroke="#14232b" stroke-width="1" opacity="0"/><circle class="dot" r="3" fill="#0b6e8a" stroke="#fff" stroke-width="1" opacity="0"/>
+    <rect x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent" class="hit"/></svg>
+    <div class="hmsg" style="padding-top:0"><b style="color:#0b6e8a">&#9644;</b> average &nbsp; <b style="color:#8aa0ab">&#9644;</b> gust &nbsp; (${unit})</div>`;
+  hv.textContent = `Last ${hours} h · ${pts.length} readings`;
+  const svg = body.querySelector("svg"), cur = svg.querySelector(".cur"), dot = svg.querySelector(".dot");
+  const show = ev => {
+    const bb = svg.getBoundingClientRect(), cx = ((ev.touches?ev.touches[0].clientX:ev.clientX) - bb.left) / bb.width * W;
+    let best = pts[0], bd = 1e9; for(const r of pts){ const d = Math.abs(X(r[0]) - cx); if(d < bd){ bd = d; best = r; } }
+    const x = X(best[0]); cur.setAttribute("x1",x); cur.setAttribute("x2",x); cur.setAttribute("opacity",.5);
+    dot.setAttribute("cx",x); dot.setAttribute("cy",Y(conv(best[1]))); dot.setAttribute("opacity",1);
+    hv.textContent = `${tl(best[0])} · ${fmt(best[1]/10)}${best[2]!=null?" / "+fmt(best[2]/10):""} ${unit} ${best[3]!=null?card(best[3]):""}`;
+  };
+  svg.addEventListener("mousemove",show); svg.addEventListener("touchmove",show,{passive:true}); svg.addEventListener("touchstart",show,{passive:true});
+}
+
+function openStation(s){ L.popup({offset:[0,-4]}).setLatLng([s.lat,s.lon]).setContent(popup(s)).openOn(map); }
+
+/* ============ RENDER ============ */
+let map, layer, spotLayer, markers = {};
+function visible(){
+  const low=$("#lowOnly").checked;
+  return [...state.stations.values()].filter(s=>!low || s.alt==null || s.alt<700);
+}
+function popup(s){
+  const g=gustFactor(s), t=trend(s), stale=ageMin(s.ts)>staleLimit(s);
+  let h=`<b>${esc(s.name)}</b><span class="tag">${esc(s.src)}</span><table>`;
+  if(s.avg==null){ h+=`<tr><td colspan="2">${esc(s.offlineNote||"No data")}</td></tr>`; }
+  else{
+    h+=`<tr><td>Average</td><td>${fmt(s.avg)} ${U()}</td></tr><tr><td>Gust</td><td>${fmt(s.gust)} ${U()}</td></tr>`+
+       `<tr><td>From</td><td>${card(s.dir)} ${s.dir!=null?Math.round(s.dir)+"°":""}</td></tr>`+
+       (g?`<tr><td>Gust factor</td><td>${g.toFixed(1)}×${g>1.6?" (gusty)":""}</td></tr>`:"")+
+       (t!=null?`<tr><td>30 min trend</td><td>${trendGlyph(t)} ${t>0?"+":""}${t.toFixed(1)} kn</td></tr>`:"")+
+       (s.temp!=null?`<tr><td>Temp</td><td>${s.temp.toFixed(1)} °C</td></tr>`:"")+
+       `<tr><td>Updated</td><td>${ago(s.ts)}${stale?" (stale)":""}</td></tr>`;
+    if(s.manual) h+=`<tr><td colspan="2" style="color:#b3362b">Manual snapshot, not live</td></tr>`;
+  }
+  h+="</table>"; if(s.alt!=null) h+=`<div style="color:#5d6f78">${s.alt} m</div>`;
+  h+=`<div class="hist" data-sid="${esc(s.id)}"></div>`;
+  if(s.url) h+=`<div><a href="${s.url}" target="_blank" rel="noopener">Open source page</a></div>`;
+  return h;
+}
+// Which markers to draw: nearest-priority-first, skipping any that would sit on top of one already placed.
+// Zoomed out you see the important stations; zooming in frees up space and more appear.
+const PRIORITY = s => {
+  const base = /Wunderground|YvBeach|VD8|Ichtus|CVN|Cudrefin/.test(s.src) ? 0 : s.src==="MeteoSwiss" ? 1 : (s.src==="OpenWindMap" || /winds\.mobi/.test(s.src)) ? 2 : /METAR/.test(s.src) ? 3 : 4;
+  return base === 0 ? 0 : base + ((s.avg==null || ageMin(s.ts)>staleLimit(s)) ? 10 : 0);   // dead or stale stations never win a spot over a live one
+};
+function pickShown(list){
+  const bounds = map.getBounds().pad(0.15), CELL = 30, taken = new Map(), out = [];
+  if(!$("#thin").checked || map.getZoom() >= 9) return list.filter(s=>bounds.contains([s.lat,s.lon]));   // thin only when zoomed far out (whole country)
+  const order = list.filter(s=>bounds.contains([s.lat,s.lon])).map(s=>({s,p:PRIORITY(s)})).sort((a,b)=>a.p-b.p || String(a.s.id).localeCompare(b.s.id));
+  for(const {s} of order){
+    const pt = map.latLngToContainerPoint([s.lat,s.lon]), cx = Math.floor(pt.x/CELL), cy = Math.floor(pt.y/CELL);
+    let clash = false;
+    for(let dx=-1; dx<=1 && !clash; dx++) for(let dy=-1; dy<=1 && !clash; dy++){
+      const q = taken.get((cx+dx)+","+(cy+dy)); if(q && Math.abs(q.x-pt.x)<CELL && Math.abs(q.y-pt.y)<CELL) clash = true;
+    }
+    if(clash) continue;
+    taken.set(cx+","+cy, pt); out.push(s);
+  }
+  return out;
+}
+function render(){
+  const list = visible().sort((a,b)=>(b.avg??-1)-(a.avg??-1));
+  markers = {}; for(const s of list) markers[s.id] = s;
+  state.list = list;
+  redraw();
+}
+let redrawTimer = null;
+const redrawSoon = () => { clearTimeout(redrawTimer); redrawTimer = setTimeout(()=>{ if(state.list) redraw(); }, 120); };
+function redraw(){
+  const list = state.list, shown = pickShown(list);
+  layer.setItems(shown);
+  // rail
+  const fresh = list.filter(s=>s.avg!=null);
+  let h = `<div class="sec">Stations in view · ${shown.length} of ${fresh.length} reporting · ${U()} (avg / gust)</div>`;
+  for(const s of shown.slice(0,50)){
+    const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null, t=trend(s), g=gustFactor(s);
+    h+=`<div class="row ${stale?"stale":""}" data-id="${s.id}">
+      <div class="arrow">${s.avg==null?"":arrowSVG(s)}</div>
+      <div style="min-width:0"><div class="nm">${esc(s.name)}<span class="tag">${esc(s.src)}</span></div>
+        <div class="sub">${s.avg==null?esc(s.offlineNote||"no data"):`${card(s.dir)} ${s.dir!=null?Math.round(s.dir)+"°":""} · ${ago(s.ts)}${s.manual?" · snapshot":""}${g&&g>1.6?" · gusty":""}`}</div>
+        ${spark(s)}</div>
+      <div class="val">${s.avg==null?"–":fmt(s.avg)}<small>${s.avg==null?"":`${fmt(s.gust)} ${trendGlyph(t)}`}</small></div></div>`;
+  }
+  // spots
+  h += `<div class="sec">Your spots · nearest live station</div>`;
+  const live = fresh.filter(s=>ageMin(s.ts)<=staleLimit(s) && !s.manual);
+  spotLayer.clearLayers();
+  for(const sp of SPOTS){
+    const near = live.map(s=>({s,d:hav(sp,s)})).sort((a,b)=>a.d-b.d).slice(0,3);
+    h+=`<div class="row" data-spot="${esc(sp.name)}" style="grid-template-columns:1fr"><div><div class="nm">${esc(sp.name)}</div>`+
+      (near.length? near.map(n=>`<div class="sub">${esc(n.s.name)} · ${n.d.toFixed(0)} km · ${fmt(n.s.avg)}/${fmt(n.s.gust)} ${U()} ${card(n.s.dir)}</div>`).join("") : `<div class="sub">no live station</div>`)+`</div></div>`;
+  }
+  if(state.errors.length) h+=`<div class="err"><b>${state.errors.length} feed(s) failed</b><br>${state.errors.slice(0,6).map(esc).join("<br>")}</div>`;
+  h+=`<div class="note">Sources: MeteoSwiss open data (cite “Source: MeteoSwiss”), OpenWindMap/Pioupiou network, winds.mobi (Holfuy, FFVL and other networks), SLF IMIS, airport METAR, Weather Underground dashboards (manual snapshot). Wind direction is where the wind comes from; arrows point where it blows to. Gust = max over the last 10 min (MeteoSwiss) or 4 min (OpenWindMap).</div>`;
+  if(h !== state.railHtml){ state.railHtml = h; $("#rail").innerHTML = h; }
+  const ok = state.stations.size - state.errors.length;
+  $("#status").innerHTML = `<span class="${state.errors.length?"bad":"ok"}">${state.errors.length?state.errors.length+" feed errors":"all feeds ok"}</span><span>updated ${new Date(state.updated).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>`;
+}
+
+/* ============ INIT ============ */
+map = L.map("map",{zoomControl:true}).setView([46.72,6.75],9);
+const swt = (layer,ext)=>`https://wmts.geo.admin.ch/1.0.0/${layer}/default/current/3857/{z}/{x}/{y}.${ext}`;
+const SWISS_ATTR = '© <a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>';
+const baseGrey  = L.tileLayer(swt("ch.swisstopo.pixelkarte-grau","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
+const baseColor = L.tileLayer(swt("ch.swisstopo.pixelkarte-farbe","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
+const baseSat   = L.tileLayer(swt("ch.swisstopo.swissimage","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
+const baseLeicht = L.tileLayer(swt("ch.swisstopo.leichte-basiskarte","png"),{maxZoom:18,attribution:SWISS_ATTR});   // swisstopo "light base map": made for overlays
+const baseOSM = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors"});
+baseOSM.addTo(map);
+L.control.layers({"OpenStreetMap":baseOSM,"Swiss light map (Swiss side only)":baseLeicht,"Swiss map (grey)":baseGrey,"Swiss map (colour)":baseColor,"Satellite":baseSat},null,{position:"topright"}).addTo(map);
+layer = new WindCanvas().addTo(map); spotLayer = L.layerGroup().addTo(map);
+const lg = L.control({position:"bottomleft"});
+lg.onAdd = () => { const d=L.DomUtil.create("div","legend");
+  d.innerHTML = "<b>knots</b><br>"+STOPS.map(([t,c])=>`<i style="background:${c}"></i>${t}+`).join("<br>"); return d; };
+lg.addTo(map);
+
+$("#rail").addEventListener("click",e=>{
+  const row=e.target.closest(".row"); if(!row) return;
+  if(row.dataset.id && markers[row.dataset.id]){ const m=markers[row.dataset.id]; map.setView([m.lat,m.lon],Math.max(map.getZoom(),11)); openStation(m); }
+  else if(row.dataset.spot){ const sp=SPOTS.find(s=>s.name===row.dataset.spot); map.setView([sp.lat,sp.lon],12); }
+});
+function setUnit(u){
+  $("#unit").value=u; try{localStorage.setItem("windUnit",u);}catch(e){}
+  document.querySelectorAll("#unitToggle button").forEach(b=>{const on=b.dataset.u===u; b.style.background=on?"#1f6f8b":"#fff"; b.style.color=on?"#fff":"#1c2b33"; b.setAttribute("aria-pressed",on);});
+  render();
+}
+document.querySelectorAll("#unitToggle button").forEach(b=>b.addEventListener("click",()=>setUnit(b.dataset.u)));
+{ let u="kn"; try{u=localStorage.getItem("windUnit")||"kn";}catch(e){} if(!UNITS[u]||u==="ms") u="kn"; setUnit(u); }
+$("#lowOnly").addEventListener("change",render);
+$("#thin").addEventListener("change",redraw);
+$("#region").addEventListener("change",refresh);
+map.on("zoomend moveend",redrawSoon);
+map.on("popupopen",e=>{ const el=e.popup.getElement(), box=el&&el.querySelector(".hist"); if(box) initHist(box); });
+function showWidget(on){
+  $("#widget").hidden = !on; $("#widgetOpen").hidden = on;
+  try{ localStorage.setItem("widgetOpen", on ? "1" : "0"); }catch(e){}
+}
+$("#widgetClose").addEventListener("click",()=>showWidget(false));
+$("#widgetOpen").addEventListener("click",()=>showWidget(true));
+{ let on = false; try{ on = localStorage.getItem("widgetOpen")==="1"; }catch(e){} showWidget(on); }   // closed until you open it
+$("#refresh").addEventListener("click",refresh);
+refresh(); setInterval(refresh,REFRESH_MS);
+</script>
+</body>
+</html>
