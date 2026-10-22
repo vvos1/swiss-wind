@@ -446,19 +446,9 @@ const baseGrey  = L.tileLayer(swt("ch.swisstopo.pixelkarte-grau","jpeg"),{maxZoo
 const baseColor = L.tileLayer(swt("ch.swisstopo.pixelkarte-farbe","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
 const baseSat   = L.tileLayer(swt("ch.swisstopo.swissimage","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
 const baseLeicht = L.tileLayer(swt("ch.swisstopo.leichte-basiskarte","png"),{maxZoom:18,attribution:SWISS_ATTR});   // swisstopo "light base map": made for overlays
-const baseVoyager = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"© OpenStreetMap contributors © CARTO"});
 const baseOSM = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors"});
-const baseLight = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"© OpenStreetMap contributors © CARTO"});
-baseLeicht.addTo(map);
-{ // Safety net: if the light base map never loads (wrong tile format or outage), try jpeg once, then fall back to Voyager (roads-focused, covers France)
-  let ok=0, bad=0, step=0;
-  baseLeicht.on("tileload",()=>{ ok++; });
-  baseLeicht.on("tileerror",()=>{ if(ok||++bad<3) return; bad=0;
-    if(step++===0){ baseLeicht.setUrl(swt("ch.swisstopo.leichte-basiskarte","jpeg")); }
-    else { map.removeLayer(baseLeicht); baseVoyager.addTo(map); }
-  });
-}
-L.control.layers({"Swiss light map (roads &amp; water)":baseLeicht,"OpenStreetMap":baseOSM,"Voyager (roads, covers France)":baseVoyager,"Swiss map (grey)":baseGrey,"Swiss map (colour)":baseColor,"Satellite":baseSat,"Light (CARTO, covers France)":baseLight},null,{position:"topright"}).addTo(map);
+baseOSM.addTo(map);
+L.control.layers({"OpenStreetMap":baseOSM,"Swiss light map (Swiss side only)":baseLeicht,"Swiss map (grey)":baseGrey,"Swiss map (colour)":baseColor,"Satellite":baseSat},null,{position:"topright"}).addTo(map);
 layer = L.layerGroup().addTo(map); spotLayer = L.layerGroup().addTo(map);
 const lg = L.control({position:"bottomleft"});
 lg.onAdd = () => { const d=L.DomUtil.create("div","legend");
