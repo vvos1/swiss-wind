@@ -1,5 +1,3 @@
-# Save as .github/workflows/wu-feed.yml
-# Repo layout:  site/index.html (the map, WU_FEED_URL = "wu.json")   wu-feed/wu-core.mjs   wu-feed/scrape-wu.mjs
 name: wu-feed
 on:
   schedule:
@@ -13,15 +11,20 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install headless browser
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
       - name: Fetch Wunderground observations
-        run: node wu-feed/scrape-wu.mjs site/wu.json
-        # env:
-        #   WU_API_KEY: ${{ secrets.WU_API_KEY }}   # only if automatic key discovery fails
+        run: |
+          mkdir -p site
+          node wu-feed/scrape-wu-browser.mjs site/wu.json
       - name: Publish site to the gh-pages branch (single commit, no history build-up)
         run: |
           cd site

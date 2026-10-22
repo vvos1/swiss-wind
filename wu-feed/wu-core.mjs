@@ -48,3 +48,19 @@ export async function fetchAll({ apiKey, fetchFn = fetch, stations = STATIONS } 
   }
   return out;
 }
+
+// Normalise an observation taken from the dashboard's own data (metric, imperial or uk_hybrid units, current or 1-day history).
+export function normalizeAny(o) {
+  const u = o.metric || o.imperial || o.uk_hybrid || {};
+  const f = o.metric ? 1 : 1.609344;                       // imperial and uk_hybrid report wind in mph
+  const wind = v => (v == null ? null : Math.round(v * f * 10) / 10);
+  const temp = u.temp ?? u.tempAvg ?? null;
+  return {
+    id: o.stationID,
+    ts: o.obsTimeUtc ? Date.parse(o.obsTimeUtc) : null,
+    avg: wind(u.windSpeed ?? u.windspeedAvg ?? null),
+    gust: wind(u.windGust ?? u.windgustHigh ?? null),
+    dir: o.winddir ?? o.winddirAvg ?? null,
+    temp: temp == null ? null : (o.imperial && !o.metric ? Math.round(((temp - 32) / 1.8) * 10) / 10 : temp),
+  };
+}
