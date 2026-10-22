@@ -351,6 +351,7 @@ async function loadSwissFeed(){
     ...j.smn.map(d=>({...d, id:"smn:"+d.code, src:"MeteoSwiss"})),
     ...(j.slf||[]).map(d=>({id:"slf:"+d.code,name:d.name,lat:d.lat,lon:d.lon,alt:d.alt,src:"SLF IMIS (30-min mean)",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:75,url:"https://whiterisk.ch/en/conditions"})),
     ...(j.metar||[]).map(d=>({id:"metar:"+d.id,name:d.name+" ("+d.id+")",lat:d.lat,lon:d.lon,alt:d.alt,src:"METAR airport",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:100,url:"https://aviationweather.gov/data/metar/?ids="+d.id})),
+    ...(j.winds||[]).map(d=>({id:"wm:"+d.id,name:d.name,lat:d.lat,lon:d.lon,alt:d.alt,src:"winds.mobi · "+(d.provider||"network"),ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:60,url:"https://winds.mobi/stations/"+encodeURIComponent(d.id)})),
     ...j.piou.map(d=>({id:"pp:"+d.id,name:d.name,lat:d.lat,lon:d.lon,alt:null,src:"OpenWindMap",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,hist:null,url:"https://www.openwindmap.org/PP"+d.id}))
   ];
 }
@@ -425,7 +426,7 @@ function popup(s){
 // Which markers to draw: nearest-priority-first, skipping any that would sit on top of one already placed.
 // Zoomed out you see the important stations; zooming in frees up space and more appear.
 const PRIORITY = s => {
-  const base = /Wunderground|YvBeach|VD8|Ichtus|CVN|Cudrefin/.test(s.src) ? 0 : s.src==="MeteoSwiss" ? 1 : s.src==="OpenWindMap" ? 2 : /METAR/.test(s.src) ? 3 : 4;
+  const base = /Wunderground|YvBeach|VD8|Ichtus|CVN|Cudrefin/.test(s.src) ? 0 : s.src==="MeteoSwiss" ? 1 : (s.src==="OpenWindMap" || /winds\.mobi/.test(s.src)) ? 2 : /METAR/.test(s.src) ? 3 : 4;
   return base === 0 ? 0 : base + ((s.avg==null || ageMin(s.ts)>staleLimit(s)) ? 10 : 0);   // dead or stale stations never win a spot over a live one
 };
 function pickShown(list){
@@ -484,7 +485,7 @@ function redraw(){
       (near.length? near.map(n=>`<div class="sub">${esc(n.s.name)} · ${n.d.toFixed(0)} km · ${fmt(n.s.avg)}/${fmt(n.s.gust)} ${U()} ${card(n.s.dir)}</div>`).join("") : `<div class="sub">no live station</div>`)+`</div></div>`;
   }
   if(state.errors.length) h+=`<div class="err"><b>${state.errors.length} feed(s) failed</b><br>${state.errors.slice(0,6).map(esc).join("<br>")}</div>`;
-  h+=`<div class="note">Sources: MeteoSwiss open data (cite “Source: MeteoSwiss”), OpenWindMap/Pioupiou network, Weather Underground dashboards (manual snapshot). Wind direction is where the wind comes from; arrows point where it blows to. Gust = max over the last 10 min (MeteoSwiss) or 4 min (OpenWindMap).</div>`;
+  h+=`<div class="note">Sources: MeteoSwiss open data (cite “Source: MeteoSwiss”), OpenWindMap/Pioupiou network, winds.mobi (Holfuy, FFVL and other networks), SLF IMIS, airport METAR, Weather Underground dashboards (manual snapshot). Wind direction is where the wind comes from; arrows point where it blows to. Gust = max over the last 10 min (MeteoSwiss) or 4 min (OpenWindMap).</div>`;
   $("#rail").innerHTML = h;
   const ok = state.stations.size - state.errors.length;
   $("#status").innerHTML = `<span class="${state.errors.length?"bad":"ok"}">${state.errors.length?state.errors.length+" feed errors":"all feeds ok"}</span><span>updated ${new Date(state.updated).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>`;

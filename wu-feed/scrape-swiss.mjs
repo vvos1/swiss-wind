@@ -44,6 +44,22 @@ export function parseMetar(list) {
   return [...best.values()].map(m => ({ id: m.icaoId, name: m.name.replace(/, CH$/, "").replace(/, [A-Z]{2}$/, ""), lat: m.lat, lon: m.lon, alt: m.elev ?? null,
     ts: m.obsTime * 1000, avg: m.wspd * 1.852, gust: m.wgst == null ? null : m.wgst * 1.852, dir: typeof m.wdir === "number" ? m.wdir : null, temp: m.temp ?? null }));
 }
+// winds.mobi aggregates many wind networks (Holfuy, FFVL, Windline, ...). Speeds km/h, ts epoch seconds.
+// Networks we already read directly are skipped so nothing is drawn twice.
+const DUP = /pioupiou|meteoswiss|yvbeach|metar|slf|ichtus|vd8/i;
+export function parseWinds(list, bbox) {
+  const out = [];
+  for (const st of list || []) {
+    const id = String(st._id || ""), pv = String(st["pv-name"] || "");
+    const c = st.loc && st.loc.coordinates, l = st.last;
+    if (!c || !l || l["w-avg"] == null || !l._id || DUP.test(id) || DUP.test(pv)) continue;
+    const [lon, lat] = c;
+    if (bbox && (lat < bbox.s || lat > bbox.n || lon < bbox.w || lon > bbox.e)) continue;
+    out.push({ id, name: st.name || st.short || id, provider: pv, lat, lon, alt: st.alt ?? null,
+      ts: l._id * 1000, avg: l["w-avg"], gust: l["w-max"] ?? null, dir: l["w-dir"] ?? null, temp: l.temp ?? null });
+  }
+  return out;
+}
 async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) await fn(items[i++]); })); }
 const getText = async (u, dec) => { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error("HTTP " + r.status); return new TextDecoder(dec || "utf-8").decode(await r.arrayBuffer()); };
 
@@ -75,8 +91,15 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-swiss.mjs")) {
   let metar = [];
   try { metar = parseMetar(JSON.parse(await getText(`https://aviationweather.gov/api/data/metar?bbox=${CH_BBOX.s},${CH_BBOX.w},${CH_BBOX.n},${CH_BBOX.e}&format=json&hours=3`))); }
   catch (e) { failed.push("metar:" + e.message); }
+  let winds = [];
+  try {
+    const raw = JSON.parse(await getText("https://winds.mobi/api/2/stations/?near-lat=46.8&near-lon=8.23&near-distance=230000&limit=1000"));
+    winds = parseWinds(raw, CH_BBOX);
+    const by = {}; for (const w of winds) by[w.provider] = (by[w.provider] || 0) + 1;
+    console.log("winds.mobi:", raw.length, "stations returned,", winds.length, "kept; by provider", JSON.stringify(by));
+  } catch (e) { failed.push("winds.mobi:" + e.message); }
   if (!smn.length && !piou.length) throw new Error("nothing fetched: " + failed.slice(0, 5).join("; "));
-  await writeFile(out + ".tmp", JSON.stringify({ generated: Date.now(), smn, piou, slf, metar }));
+  await writeFile(out + ".tmp", JSON.stringify({ generated: Date.now(), smn, piou, slf, metar, winds }));
   await rename(out + ".tmp", out);
-  console.log(new Date().toISOString(), `SWISS meteoswiss=${smn.length}/${stations.length} openwindmap=${piou.length} slf=${slf.length} metar=${metar.length}`, failed.length ? "failed: " + failed.slice(0, 8).join("; ") : "");
+  console.log(new Date().toISOString(), `SWISS meteoswiss=${smn.length}/${stations.length} openwindmap=${piou.length} slf=${slf.length} metar=${metar.length} winds.mobi=${winds.length}`, failed.length ? "failed: " + failed.slice(0, 8).join("; ") : "");
 }
