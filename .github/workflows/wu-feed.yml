@@ -1,13 +1,14 @@
 name: wu-feed
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "3,13,23,33,43,53 * * * *"      # backup only: GitHub's cron has proven unreliable here; the run below restarts itself
   workflow_dispatch:
   push:
     branches: [main]
     paths: ["site/**"]          # a change to the page redeploys it
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: wu-feed
   cancel-in-progress: false
@@ -50,3 +51,8 @@ jobs:
             scrape; publish
             if [ $i -lt 3 ]; then sleep 100; fi
           done
+      - name: Start the next run (self-restarting chain, so we do not depend on GitHub's cron)
+        if: always() && github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run wu-feed.yml --repo "${{ github.repository }}" --ref main

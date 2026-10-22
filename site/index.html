@@ -71,7 +71,7 @@ main{flex:1;min-height:0;position:relative}
       <button type="button" data-u="kn" style="border:0;padding:5px 12px;cursor:pointer">kn</button><button type="button" data-u="kmh" style="border:0;border-left:1px solid #8aa0ab;padding:5px 12px;cursor:pointer">km/h</button></span><input type="hidden" id="unit" value="kn">
     <label>Area <select id="region"><option value="all">All Switzerland</option><option value="near">Vaud &amp; lakes</option></select></label>
     <label><input type="checkbox" id="lowOnly"> Below 700 m only</label>
-    <label><input type="checkbox" id="thin" checked> Thin out when zoomed out</label>
+    <label><input type="checkbox" id="thin" checked> Thin out when zoomed far out</label>
     <button id="refresh" type="button">Refresh</button>
   </div>
   <div id="status"></div>
@@ -356,6 +356,7 @@ async function loadSwissFeed(){
   if(!r.ok) throw new Error("HTTP "+r.status);
   const j = await r.json();
   if(!j.smn || !j.smn.length) throw new Error("empty");
+  if(j.generated && Date.now()-j.generated > 25*60*1000) throw new Error("aggregate is stale");   // scheduled job not running: go straight to the sources instead
   return [
     ...j.smn.map(d=>({...d, id:"smn:"+d.code, src:"MeteoSwiss"})),
     ...(j.slf||[]).map(d=>({id:"slf:"+d.code,name:d.name,lat:d.lat,lon:d.lon,alt:d.alt,src:"SLF IMIS (30-min mean)",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,temp:d.temp,hist:null,staleMin:75,url:"https://whiterisk.ch/en/conditions"})),
@@ -496,7 +497,7 @@ const PRIORITY = s => {
 };
 function pickShown(list){
   const bounds = map.getBounds().pad(0.15), CELL = 30, taken = new Map(), out = [];
-  if(!$("#thin").checked) return list.filter(s=>bounds.contains([s.lat,s.lon]));
+  if(!$("#thin").checked || map.getZoom() >= 9) return list.filter(s=>bounds.contains([s.lat,s.lon]));   // thin only when zoomed far out (whole country)
   const order = list.filter(s=>bounds.contains([s.lat,s.lon])).map(s=>({s,p:PRIORITY(s)})).sort((a,b)=>a.p-b.p || String(a.s.id).localeCompare(b.s.id));
   for(const {s} of order){
     const pt = map.latLngToContainerPoint([s.lat,s.lon]), cx = Math.floor(pt.x/CELL), cy = Math.floor(pt.y/CELL);
