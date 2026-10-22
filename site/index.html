@@ -264,6 +264,10 @@ const inRegion = s => $("#region").value==="all" || hav(HOME,s) <= 90;   // km a
 async function pool(items,n,fn){ let i=0; await Promise.all(Array.from({length:n},async()=>{ while(i<items.length) await fn(items[i++]); })); }
 
 // Wunderground live feed: leave empty to use the manual snapshots. See wu-worker.js (Cloudflare Worker) or scrape-wu.mjs.
+// Data files are written by the scheduled job to the "data" branch and read straight from GitHub's raw host (CORS-enabled, updates on every commit).
+// The ?t= minute stamp keeps the CDN from serving a copy older than about a minute.
+const DATA_BASE = "https://raw.githubusercontent.com/vvos1/swiss-wind/data/";
+const dataUrl = f => DATA_BASE + f + "?t=" + Math.floor(Date.now()/60000);
 const WU_FEED_URL = "wu.json";
 
 // Wunderground: no open API without a key, so these are manual snapshots read from the public dashboards (22 Oct 2026, ~11:30).
@@ -331,7 +335,7 @@ async function loadPiou(){
 async function loadWU(){
   const base = WU.map(s=>{ const o={...s}; if(s.snap){ o.ts=Date.parse(s.snap.ts); o.avg=s.snap.avg; o.gust=s.snap.gust; o.dir=s.snap.dir; o.manual=true; } return o; });
   if(!WU_FEED_URL) return base;
-  const r = await fetch(WU_FEED_URL, {cache:"no-store"});
+  const r = await fetch(dataUrl(WU_FEED_URL));
   if(!r.ok) throw new Error("Wunderground feed HTTP "+r.status);
   const feed = await r.json();                      // [{id, ts, avg, gust, dir, temp}]  speeds in km/h, ts in ms
   return base.map(o=>{ const f = feed.find(x=>"wu:"+x.id===o.id); if(!f || f.avg==null) return o;
@@ -348,7 +352,7 @@ const FEEDS = [
    CUDREFIN:{id:"ich:CUDREFIN",name:"Cudrefin",lat:46.954,lon:7.018,alt:null,src:"Cudrefin via Ichtus",url:"https://letskite.ch/spots/82/kitesurf/cudrefin/"}}}
 ];
 async function loadFeed(fd){
-  const r = await fetch(fd.file,{cache:"no-store"});
+  const r = await fetch(dataUrl(fd.file));
   if(!r.ok) throw new Error(fd.label+" feed HTTP "+r.status);
   const j = await r.json(), arr = Array.isArray(j) ? j : [j], res = [];
   for(const f of arr){ const st = fd.sts[f.id]; if(st && f.avg!=null) res.push({...st, ts:f.ts, avg:f.avg, gust:f.gust, dir:f.dir, temp:f.temp, hist:null}); }
@@ -358,7 +362,7 @@ async function loadFeed(fd){
 
 // One file with every MeteoSwiss + OpenWindMap station, built by the scheduled job (so visitors don't download ~160 CSVs)
 async function loadSwissFeed(){
-  const r = await fetch("swiss.json",{cache:"no-store"});
+  const r = await fetch(dataUrl("swiss.json"));
   if(!r.ok) throw new Error("HTTP "+r.status);
   const j = await r.json();
   if(!j.smn || !j.smn.length) throw new Error("empty");
@@ -473,7 +477,7 @@ const WindCanvas = L.Layer.extend({
 
 /* ============ STATION HISTORY (popup chart, data from history.json built by the scheduled job) ============ */
 let histPromise = null;
-const getHist = () => histPromise || (histPromise = fetch("history.json",{cache:"no-store"}).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).catch(e=>{ histPromise=null; throw e; }));
+const getHist = () => histPromise || (histPromise = fetch(dataUrl("history.json")).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).catch(e=>{ histPromise=null; throw e; }));
 function initHist(box){
   let hours = 12; try{ hours = +localStorage.getItem("histHours") || 12; }catch(e){}
   box.innerHTML = `<div class="hbar"><span class="hv">History</span><span>${[3,12,24].map(n=>`<button type="button" data-h="${n}">${n} h</button>`).join("")}</span></div><div class="hbody"><div class="hmsg">Loading history…</div></div>`;

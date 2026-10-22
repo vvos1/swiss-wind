@@ -1,4 +1,7 @@
 name: wu-feed
+# Data (wu/yv/vd8/ichtus/swiss/history .json) goes to the "data" branch and is read straight from raw.githubusercontent.com.
+# The website itself (site/index.html) goes to gh-pages only when the page changes: publishing it every 100 s made GitHub Pages
+# cancel its own builds, which left the live site stuck on old data.
 on:
   schedule:
     - cron: "3,13,23,33,43,53 * * * *"      # backup only: GitHub's cron has proven unreliable here; the run below restarts itself
@@ -21,36 +24,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Scrape and publish Wunderground observations (3 passes per run, about 100 s apart)
+      - name: Scrape and publish (3 passes per run, about 100 s apart)
         run: |
-          mkdir -p site
-          # bring back the previous 24 h history from the published branch (the branch is replaced every pass)
-          git fetch -q --depth=1 origin gh-pages && git show FETCH_HEAD:history.json > site/history.json 2>/dev/null || { rm -f site/history.json; echo "no previous history"; }
-          git init -q -b gh-pages site 2>/dev/null || true
+          REMOTE="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          push_dir() {   # push_dir <dir> <branch>: replace the branch with one commit holding the directory
+            ( cd "$1"
+              rm -rf .git && git init -q -b "$2"
+              git config user.name "wu-feed"; git config user.email "wu-feed@users.noreply.github.com"
+              git add -A; git commit -q -m "update $(date -u +%FT%TZ)"
+              git push -q -f "$REMOTE" "$2" )
+          }
+          # 1) the website, only when this run was caused by a change to it
+          if [ "${{ github.event_name }}" = "push" ]; then push_dir site gh-pages; fi
+
+          mkdir -p data
+          # 2) bring back the previous 24 h history from the data branch
+          git fetch -q --depth=1 origin data && git show FETCH_HEAD:history.json > data/history.json 2>/dev/null || { rm -f data/history.json; echo "no previous history"; }
+          : > data/scrape.log
+          logged() { "$@" 2>&1 | tee -a data/scrape.log; return "${PIPESTATUS[0]}"; }
+
           scrape() {
-            node wu-feed/scrape-yvbeach.mjs site/yv.json || echo "YvBeach scrape failed"
-            node wu-feed/scrape-vd8.mjs site/vd8.json || echo "VD8 scrape failed"
-            node wu-feed/scrape-ichtus.mjs site/ichtus.json || echo "Ichtus scrape failed"
-            node wu-feed/scrape-wu.mjs site/wu.json || true
-            if ! node -e 'const d=JSON.parse(require("fs").readFileSync("site/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
+            logged node wu-feed/scrape-yvbeach.mjs data/yv.json || echo "YvBeach scrape failed"
+            logged node wu-feed/scrape-vd8.mjs data/vd8.json || echo "VD8 scrape failed"
+            logged node wu-feed/scrape-ichtus.mjs data/ichtus.json || echo "Ichtus scrape failed"
+            logged node wu-feed/scrape-wu.mjs data/wu.json || true
+            if ! node -e 'const d=JSON.parse(require("fs").readFileSync("data/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
               echo "Fast method failed, using headless browser"
               [ -d node_modules/playwright ] || npm install --no-save playwright@1.49.1
-              node wu-feed/scrape-wu-browser.mjs site/wu.json || {
+              logged node wu-feed/scrape-wu-browser.mjs data/wu.json || {
                 npx playwright install --with-deps chromium
-                node wu-feed/scrape-wu-browser.mjs site/wu.json
+                logged node wu-feed/scrape-wu-browser.mjs data/wu.json
               }
             fi
           }
-          publish() {
-            ( cd site
-              rm -rf .git && git init -q -b gh-pages
-              git config user.name "wu-feed"; git config user.email "wu-feed@users.noreply.github.com"
-              git add -A; git commit -q -m "update $(date -u +%FT%TZ)"
-              git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages )
-          }
           for i in 1 2 3; do
-            if [ $i -eq 1 ]; then node wu-feed/scrape-swiss.mjs site/swiss.json || echo "Swiss aggregate failed"; fi
-            scrape; node wu-feed/build-history.mjs site || echo "history update failed"; publish
+            if [ $i -eq 1 ]; then logged node wu-feed/scrape-swiss.mjs data/swiss.json || echo "Swiss aggregate failed"; fi
+            scrape
+            logged node wu-feed/build-history.mjs data || echo "history update failed"
+            tail -n 300 data/scrape.log > data/scrape.tmp && mv data/scrape.tmp data/scrape.log
+            push_dir data data
             if [ $i -lt 3 ]; then sleep 100; fi
           done
       - name: Start the next run (self-restarting chain, so we do not depend on GitHub's cron)
