@@ -26,9 +26,15 @@ select,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid
 button{cursor:pointer}button:hover{border-color:var(--accent)}
 #status{margin-left:auto;font-family:var(--mono);font-size:.78rem;color:var(--muted);display:flex;gap:.9rem;flex-wrap:wrap}
 #status .ok{color:var(--ok)}#status .bad{color:var(--bad)}
-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,380px) 1fr}
-#rail{overflow:auto;background:var(--panel);border-right:1px solid var(--line);min-width:0}
-#map{min-width:0;min-height:0;background:#cfd8dc}
+main{flex:1;min-height:0;position:relative}
+#widget{position:absolute;right:12px;top:56px;width:340px;max-width:calc(100% - 24px);max-height:calc(100% - 110px);display:flex;flex-direction:column;z-index:1100;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.28);overflow:hidden}
+#widget[hidden],#widgetOpen[hidden]{display:none}
+#widgetHead{display:flex;align-items:center;justify-content:space-between;padding:.45rem .6rem .45rem .9rem;border-bottom:1px solid var(--line);font-weight:600;font-size:.85rem}
+#widgetHead button{border:0;background:none;font-size:1rem;line-height:1;padding:.2rem .4rem;color:var(--muted)}
+#widgetOpen{position:absolute;right:12px;top:56px;z-index:1100;box-shadow:0 2px 8px rgba(0,0,0,.3);border-radius:8px;padding:.4rem .7rem;font-weight:500}
+#rail{overflow:auto;min-width:0;flex:1}
+#map{position:absolute;inset:0;background:#cfd8dc}
 .sec{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:.7rem .9rem .3rem;position:sticky;top:0;background:var(--panel);z-index:2}
 .row{display:grid;grid-template-columns:34px 1fr auto;gap:.15rem .7rem;padding:.55rem .9rem;border-top:1px solid var(--line);cursor:pointer;align-items:center}
 .row:hover{background:var(--bg)}
@@ -52,8 +58,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,380px) 
 .legend{background:rgba(255,255,255,.93);color:#14232b;padding:.4rem .6rem;border-radius:4px;font:11px/1.2 var(--mono);box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .legend i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:-1px}
 @media (max-width:760px){
-  main{grid-template-columns:1fr;grid-template-rows:55vh 1fr}
-  #map{order:-1}#rail{border-right:0;border-top:1px solid var(--line)}
+  #widget{max-height:45%;top:auto;bottom:34px}#widgetOpen{top:auto;bottom:34px}
   #status{margin-left:0}
 }
 </style>
@@ -72,8 +77,12 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,380px) 
   <div id="status"></div>
 </header>
 <main>
-  <aside id="rail"></aside>
   <div id="map"></div>
+  <button id="widgetOpen" type="button" hidden>&#9776; Stations</button>
+  <section id="widget" aria-label="Stations in view" hidden>
+    <div id="widgetHead"><span>Stations &amp; spots</span><button id="widgetClose" type="button" aria-label="Close">&#10005;</button></div>
+    <aside id="rail"></aside>
+  </section>
 </main>
 
 <div id="fatal" hidden style="position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#b3362b;color:#fff;padding:.6rem 1rem;font:12px/1.4 monospace;white-space:pre-wrap"></div>
@@ -572,6 +581,13 @@ $("#lowOnly").addEventListener("change",render);
 $("#thin").addEventListener("change",redraw);
 $("#region").addEventListener("change",refresh);
 map.on("zoomend moveend",redrawSoon);
+function showWidget(on){
+  $("#widget").hidden = !on; $("#widgetOpen").hidden = on;
+  try{ localStorage.setItem("widgetOpen", on ? "1" : "0"); }catch(e){}
+}
+$("#widgetClose").addEventListener("click",()=>showWidget(false));
+$("#widgetOpen").addEventListener("click",()=>showWidget(true));
+{ let on = false; try{ on = localStorage.getItem("widgetOpen")==="1"; }catch(e){} showWidget(on); }   // closed until you open it
 $("#refresh").addEventListener("click",refresh);
 refresh(); setInterval(refresh,REFRESH_MS);
 </script>
