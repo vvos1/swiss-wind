@@ -17,14 +17,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install headless browser
-        run: |
-          npm install --no-save playwright@1.49.1
-          npx playwright install --with-deps chromium
-      - name: Fetch Wunderground observations
+      - name: Fetch Wunderground observations (fast method first, headless browser as fallback)
         run: |
           mkdir -p site
-          node wu-feed/scrape-wu-browser.mjs site/wu.json
+          node wu-feed/scrape-wu.mjs site/wu.json || true
+          if ! node -e 'const d=JSON.parse(require("fs").readFileSync("site/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
+            echo "Fast method failed for at least one station, falling back to the headless browser"
+            npm install --no-save playwright@1.49.1
+            npx playwright install --with-deps chromium
+            node wu-feed/scrape-wu-browser.mjs site/wu.json
+          fi
       - name: Publish site to the gh-pages branch (single commit, no history build-up)
         run: |
           cd site
