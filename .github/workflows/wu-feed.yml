@@ -44,5 +44,5 @@ jobs:
           }
           for i in 1 2 3; do
             scrape; publish
-            [ $i -lt 3 ] && sleep 100
+            if [ $i -lt 3 ]; then sleep 100; fi
           done
