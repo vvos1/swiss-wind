@@ -421,20 +421,49 @@ function popup(s){
   if(s.url) h+=`<div><a href="${s.url}" target="_blank" rel="noopener">Open source page</a></div>`;
   return h;
 }
+// Which markers to draw: nearest-priority-first, skipping any that would sit on top of one already placed.
+// Zoomed out you see the important stations; zooming in frees up space and more appear.
+const PRIORITY = s => {
+  const base = /Wunderground|YvBeach|VD8|Ichtus|CVN|Cudrefin/.test(s.src) ? 0 : s.src==="MeteoSwiss" ? 1 : s.src==="OpenWindMap" ? 2 : /METAR/.test(s.src) ? 3 : 4;
+  return base + ((s.avg==null || ageMin(s.ts)>staleLimit(s)) ? 10 : 0);   // dead or stale stations never win a spot over a live one
+};
+function pickShown(list){
+  const bounds = map.getBounds().pad(0.15), CELL = 42, taken = new Map(), out = [];
+  const order = list.filter(s=>bounds.contains([s.lat,s.lon])).map(s=>({s,p:PRIORITY(s)})).sort((a,b)=>a.p-b.p || String(a.s.id).localeCompare(b.s.id));
+  for(const {s} of order){
+    const pt = map.latLngToContainerPoint([s.lat,s.lon]), cx = Math.floor(pt.x/CELL), cy = Math.floor(pt.y/CELL);
+    let clash = false;
+    for(let dx=-1; dx<=1 && !clash; dx++) for(let dy=-1; dy<=1 && !clash; dy++){
+      const q = taken.get((cx+dx)+","+(cy+dy)); if(q && Math.abs(q.x-pt.x)<CELL && Math.abs(q.y-pt.y)<CELL) clash = true;
+    }
+    if(clash) continue;
+    taken.set(cx+","+cy, pt); out.push(s);
+  }
+  return out;
+}
 function render(){
   const list = visible().sort((a,b)=>(b.avg??-1)-(a.avg??-1));
-  layer.clearLayers(); markers={};
-  for(const s of list){
+  markers = {}; layer.clearLayers();
+  for(const s of list){      // build once per data refresh; only the picked ones are put on the map
     const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null;
     const html = s.avg==null ? `<div class="wm stale"><svg viewBox="-20 -20 40 40"><circle r="8" fill="#8aa0ab" stroke="#102028" stroke-width="1.4"/></svg><b>off</b></div>`
       : `<div class="wm ${stale?"stale":""}">${arrowSVG(s)}<b>${fmt(s.avg)}${s.gust!=null?"/"+fmt(s.gust):""}</b></div>`;
-    const m = L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",html,iconSize:[46,46],iconAnchor:[23,20]})}).bindPopup(()=>popup(s));
-    m.addTo(layer); markers[s.id]=m;
+    markers[s.id] = L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",html,iconSize:[46,46],iconAnchor:[23,20]})}).bindPopup(()=>popup(s));
   }
+  state.list = list;
+  redraw();
+}
+let redrawTimer = null;
+const redrawSoon = () => { clearTimeout(redrawTimer); redrawTimer = setTimeout(()=>{ if(state.list) redraw(); }, 120); };
+function redraw(){
+  const list = state.list, shown = pickShown(list);
+  const want = new Set(shown.map(s=>s.id));
+  layer.eachLayer(m=>{ if(!want.has(m._sid) && !(m.isPopupOpen && m.isPopupOpen())) layer.removeLayer(m); });   // keep an open popup alive while panning
+  for(const s of shown){ const m = markers[s.id]; m._sid = s.id; if(!layer.hasLayer(m)) layer.addLayer(m); }
   // rail
   const fresh = list.filter(s=>s.avg!=null);
-  let h = `<div class="sec">Stations · ${fresh.length} reporting · ${U()} (avg / gust)</div>`;
-  for(const s of list){
+  let h = `<div class="sec">Stations in view · ${shown.length} of ${fresh.length} reporting · ${U()} (avg / gust)</div>`;
+  for(const s of shown.slice(0,80)){
     const stale = ageMin(s.ts)>staleLimit(s) || s.avg==null, t=trend(s), g=gustFactor(s);
     h+=`<div class="row ${stale?"stale":""}" data-id="${s.id}">
       <div class="arrow">${s.avg==null?"":arrowSVG(s)}</div>
@@ -490,6 +519,7 @@ document.querySelectorAll("#unitToggle button").forEach(b=>b.addEventListener("c
 { let u="kn"; try{u=localStorage.getItem("windUnit")||"kn";}catch(e){} if(!UNITS[u]||u==="ms") u="kn"; setUnit(u); }
 $("#lowOnly").addEventListener("change",render);
 $("#region").addEventListener("change",refresh);
+map.on("zoomend moveend",redrawSoon);
 $("#refresh").addEventListener("click",refresh);
 refresh(); setInterval(refresh,REFRESH_MS);
 </script>
