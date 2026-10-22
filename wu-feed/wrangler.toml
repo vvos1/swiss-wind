@@ -1,0 +1,4 @@
+name = "wu-feed"
+main = "wu-worker.js"
+compatibility_date = "2026-10-01"
+# Optional: put your own key in a secret instead of letting the worker find it:  npx wrangler secret put WU_API_KEY

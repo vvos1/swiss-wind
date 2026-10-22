@@ -1,0 +1,33 @@
+# Save as .github/workflows/wu-feed.yml
+# Repo layout:  site/index.html (the map, WU_FEED_URL = "wu.json")   wu-feed/wu-core.mjs   wu-feed/scrape-wu.mjs
+name: wu-feed
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: wu-feed
+  cancel-in-progress: true
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch Wunderground observations
+        run: node wu-feed/scrape-wu.mjs site/wu.json
+        # env:
+        #   WU_API_KEY: ${{ secrets.WU_API_KEY }}   # only if automatic key discovery fails
+      - name: Publish site to the gh-pages branch (single commit, no history build-up)
+        run: |
+          cd site
+          git init -q -b gh-pages
+          git config user.name "wu-feed"
+          git config user.email "wu-feed@users.noreply.github.com"
+          git add -A
+          git commit -q -m "update $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
