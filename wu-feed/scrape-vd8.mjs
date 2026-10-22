@@ -37,14 +37,20 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-vd8.mjs")) {
     const m = js.match(/realTimeURL\s*:\s*['"]([^'"]+)['"]/);
     if (m) cands.push(m[1]);
     const lits = [...new Set([...js.matchAll(/['"]([\w./-]+\.(?:txt|json|php|xml))['"]/g)].map(x => x[1]))];
+    for (const l of js.split(/\r?\n/).filter(l => /longpoll|timestamp/i.test(l)).slice(0, 10)) console.log("gauges.js:", l.trim().slice(0, 220));
     notes.push("gauges.js realTimeURL=" + (m ? m[1] : "none") + "; data-file literals: " + lits.join(", "));
     cands.push(...lits);
   } catch (e) { notes.push("gauges.js: " + e.message); }
   cands.push("realtimegauges.txt", "realtimegauges.json", "realtime.txt");
-  for (const c of [...new Set(cands)]) {
-    const u = new URL(c, BASE).href;
-    try { const t = await get(u); if (t.trim().startsWith("{")) { text = t; notes.push("using " + u); break; } notes.push(`${u}: not JSON (${t.slice(0, 80).replace(/\s+/g, " ")})`); }
-    catch (e) { notes.push(`${u}: ${e.message}`); }
+  const urls = [];
+  for (const c of [...new Set(cands)]) { const u = new URL(c, BASE).href; urls.push(u); if (/\.php$/.test(u)) urls.push(u + "?timestamp=0", u + "?timestamp=1&_=" + Date.now()); }
+  for (const u of urls) {
+    try {
+      const t = await get(u);
+      if (!t.trim().startsWith("{")) { notes.push(`${u}: not JSON (${t.slice(0, 80).replace(/\s+/g, " ")})`); continue; }
+      let ok = false; try { parseVd8(JSON.parse(t)); ok = true; } catch (e) { notes.push(`${u}: ${e.message.slice(0, 80)} | raw: ${t.slice(0, 300).replace(/\s+/g, " ")}`); }
+      if (ok) { text = t; notes.push("using " + u); break; }
+    } catch (e) { notes.push(`${u}: ${e.message}`); }
   }
   if (!text) throw new Error("vd8 fetch failed:\n  " + notes.join("\n  "));
   console.log("vd8:", notes[notes.length - 1]);
