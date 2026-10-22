@@ -64,7 +64,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,380px) 
   <div class="ctl">
     <span id="unitToggle" role="group" aria-label="Wind unit" style="display:inline-flex;border:1px solid #8aa0ab;border-radius:8px;overflow:hidden;font-size:13px">
       <button type="button" data-u="kn" style="border:0;padding:5px 12px;cursor:pointer">kn</button><button type="button" data-u="kmh" style="border:0;border-left:1px solid #8aa0ab;padding:5px 12px;cursor:pointer">km/h</button></span><input type="hidden" id="unit" value="kn">
-    <label>Area <select id="region"><option value="near">Vaud &amp; lakes</option><option value="all">All Switzerland</option></select></label>
+    <label>Area <select id="region"><option value="all">All Switzerland</option><option value="near">Vaud &amp; lakes</option></select></label>
     <label><input type="checkbox" id="lowOnly" checked> Below 700 m only</label>
     <button id="refresh" type="button">Refresh</button>
   </div>
@@ -94,7 +94,7 @@ if (typeof L === "undefined") {
 /* ============ CONFIG ============ */
 const STALE_MIN = 40;            // greyed out when older than this
 const REFRESH_MS = 2 * 60 * 1000;    // re-poll every 2 min (MeteoSwiss itself updates every 10 min; wu.json about every 5)
-const PIOU_BBOX = {s:46.1, n:47.1, w:5.9, e:7.3};   // OpenWindMap beacons inside this box are picked up automatically
+const PIOU_BBOX = {s:45.8, n:47.85, w:5.9, e:10.55};   // OpenWindMap beacons inside this box are picked up automatically
 
 // MeteoSwiss SwissMetNet stations (from ogd-smn_meta_stations.csv, listed A to R). The page also reads the live
 // station list at startup and adds any station that is missing here (S to Z). Source: MeteoSwiss
@@ -339,20 +339,38 @@ async function loadFeed(fd){
   return res;
 }
 
+// One file with every MeteoSwiss + OpenWindMap station, built by the scheduled job (so visitors don't download ~160 CSVs)
+async function loadSwissFeed(){
+  const r = await fetch("swiss.json",{cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j = await r.json();
+  if(!j.smn || !j.smn.length) throw new Error("empty");
+  return [
+    ...j.smn.map(d=>({...d, id:"smn:"+d.code, src:"MeteoSwiss"})),
+    ...j.piou.map(d=>({id:"pp:"+d.id,name:d.name,lat:d.lat,lon:d.lon,alt:null,src:"OpenWindMap",ts:d.ts,avg:d.avg,gust:d.gust,dir:d.dir,hist:null,url:"https://www.openwindmap.org/PP"+d.id}))
+  ];
+}
+
 async function refresh(){
   $("#refresh").disabled = true;
   if(!state.augmented){ state.augmented = true; await augmentStations(); }
-  const errors=[], out=[], todo = SMN_ALL.filter(inRegion);
-  let done=0;
-  const jobs = [
-    pool(todo, 8, async st=>{
-      try{ out.push(await loadSMN(st)); }catch(e){ errors.push(`${st.code}: ${e.message}`); }
-      $("#status").textContent = `loading MeteoSwiss ${++done}/${todo.length}…`;
-    }),
-    loadPiou().then(a=>out.push(...a)).catch(e=>errors.push("OpenWindMap: "+e.message)),
+  const errors=[], out=[];
+  let feed = null;
+  try{ feed = (await loadSwissFeed()).filter(inRegion); }catch(e){ /* no aggregate yet: fall back to fetching every station from the browser */ }
+  const jobs = [];
+  if(feed){ out.push(...feed); }
+  else {
+    const todo = SMN_ALL.filter(inRegion); let done=0;
+    jobs.push(
+      pool(todo, 8, async st=>{
+        try{ out.push(await loadSMN(st)); }catch(e){ errors.push(`${st.code}: ${e.message}`); }
+        $("#status").textContent = `loading MeteoSwiss ${++done}/${todo.length}…`;
+      }),
+      loadPiou().then(a=>out.push(...a.filter(inRegion))).catch(e=>errors.push("OpenWindMap: "+e.message)));
+  }
+  jobs.push(
     ...FEEDS.map(fd=>loadFeed(fd).then(x=>out.push(...x)).catch(e=>errors.push(String(e.message||e)))),
-    loadWU().then(a=>out.push(...a)).catch(e=>{ errors.push(String(e.message||e)); out.push(...WU.map(s=>({...s}))); })
-  ];
+    loadWU().then(a=>out.push(...a)).catch(e=>{ errors.push(String(e.message||e)); out.push(...WU.map(s=>({...s}))); }));
   await Promise.all(jobs);
   state.stations = new Map(out.map(s=>[s.id,s])); state.errors = errors; state.updated = Date.now();
   render(); $("#refresh").disabled = false;

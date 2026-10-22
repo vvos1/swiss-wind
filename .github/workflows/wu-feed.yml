@@ -46,6 +46,7 @@ jobs:
               git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages )
           }
           for i in 1 2 3; do
+            if [ $i -eq 1 ]; then node wu-feed/scrape-swiss.mjs site/swiss.json || echo "Swiss aggregate failed"; fi
             scrape; publish
             if [ $i -lt 3 ]; then sleep 100; fi
           done
