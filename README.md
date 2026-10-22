@@ -7,3 +7,5 @@ Live wind map for Vaud and the lakes (Léman, Yverdon, Neuchâtel).
 - `.github/workflows/wu-feed.yml`: runs the fetcher on a schedule and publishes `site/` to the `gh-pages` branch.
 
 Data: MeteoSwiss (cite "Source: MeteoSwiss"), OpenWindMap, swisstopo map tiles.
+
+To open site go to: https://vvos1.github.io/swiss-wind/
