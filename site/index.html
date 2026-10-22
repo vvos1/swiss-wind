@@ -92,7 +92,7 @@ if (typeof L === "undefined") {
 }
 /* ============ CONFIG ============ */
 const STALE_MIN = 40;            // greyed out when older than this
-const REFRESH_MS = 10 * 60 * 1000;   // MeteoSwiss and Wunderground update about every 10 min
+const REFRESH_MS = 2 * 60 * 1000;    // re-poll every 2 min (MeteoSwiss itself updates every 10 min; wu.json about every 5)
 const PIOU_BBOX = {s:46.1, n:47.1, w:5.9, e:7.3};   // OpenWindMap beacons inside this box are picked up automatically
 
 // MeteoSwiss SwissMetNet stations (from ogd-smn_meta_stations.csv, listed A to R). The page also reads the live
@@ -408,8 +408,6 @@ function render(){
   spotLayer.clearLayers();
   for(const sp of SPOTS){
     const near = live.map(s=>({s,d:hav(sp,s)})).sort((a,b)=>a.d-b.d).slice(0,3);
-    L.marker([sp.lat,sp.lon],{icon:L.divIcon({className:"",html:'<div class="spot"></div>',iconSize:[14,14]}),zIndexOffset:-500})
-      .bindTooltip(sp.name,{permanent:true,direction:"right",offset:[8,0]}).addTo(spotLayer);
     h+=`<div class="row" data-spot="${esc(sp.name)}" style="grid-template-columns:1fr"><div><div class="nm">${esc(sp.name)}</div>`+
       (near.length? near.map(n=>`<div class="sub">${esc(n.s.name)} · ${n.d.toFixed(0)} km · ${fmt(n.s.avg)}/${fmt(n.s.gust)} ${U()} ${card(n.s.dir)}</div>`).join("") : `<div class="sub">no live station</div>`)+`</div></div>`;
   }
@@ -428,7 +426,7 @@ const baseGrey  = L.tileLayer(swt("ch.swisstopo.pixelkarte-grau","jpeg"),{maxZoo
 const baseColor = L.tileLayer(swt("ch.swisstopo.pixelkarte-farbe","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
 const baseSat   = L.tileLayer(swt("ch.swisstopo.swissimage","jpeg"),{maxZoom:18,attribution:SWISS_ATTR});
 const baseLight = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"© OpenStreetMap contributors © CARTO"});
-baseGrey.addTo(map);
+baseColor.addTo(map);
 L.control.layers({"Swiss map (grey)":baseGrey,"Swiss map (colour)":baseColor,"Satellite":baseSat,"Light (CARTO, covers France)":baseLight},null,{position:"topright"}).addTo(map);
 layer = L.layerGroup().addTo(map); spotLayer = L.layerGroup().addTo(map);
 const lg = L.control({position:"bottomleft"});

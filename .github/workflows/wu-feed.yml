@@ -1,41 +1,45 @@
 name: wu-feed
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
   group: wu-feed
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Fetch Wunderground observations (fast method first, headless browser as fallback)
+      - name: Scrape and publish Wunderground observations (3 passes per run, about 100 s apart)
         run: |
           mkdir -p site
-          node wu-feed/scrape-wu.mjs site/wu.json || true
-          if ! node -e 'const d=JSON.parse(require("fs").readFileSync("site/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
-            echo "Fast method failed for at least one station, falling back to the headless browser"
-            npm install --no-save playwright@1.49.1
-            node wu-feed/scrape-wu-browser.mjs site/wu.json || {
-              echo "Preinstalled Chrome unavailable, installing Chromium"
-              npx playwright install --with-deps chromium
-              node wu-feed/scrape-wu-browser.mjs site/wu.json
-            }
-          fi
-      - name: Publish site to the gh-pages branch (single commit, no history build-up)
-        run: |
-          cd site
-          git init -q -b gh-pages
-          git config user.name "wu-feed"
-          git config user.email "wu-feed@users.noreply.github.com"
-          git add -A
-          git commit -q -m "update $(date -u +%FT%TZ)"
-          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+          git init -q -b gh-pages site 2>/dev/null || true
+          scrape() {
+            node wu-feed/scrape-wu.mjs site/wu.json || true
+            if ! node -e 'const d=JSON.parse(require("fs").readFileSync("site/wu.json","utf8")); process.exit(d.every(x=>!x.error)?0:1)' 2>/dev/null; then
+              echo "Fast method failed, using headless browser"
+              [ -d node_modules/playwright ] || npm install --no-save playwright@1.49.1
+              node wu-feed/scrape-wu-browser.mjs site/wu.json || {
+                npx playwright install --with-deps chromium
+                node wu-feed/scrape-wu-browser.mjs site/wu.json
+              }
+            fi
+          }
+          publish() {
+            ( cd site
+              rm -rf .git && git init -q -b gh-pages
+              git config user.name "wu-feed"; git config user.email "wu-feed@users.noreply.github.com"
+              git add -A; git commit -q -m "update $(date -u +%FT%TZ)"
+              git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages )
+          }
+          for i in 1 2 3; do
+            scrape; publish
+            [ $i -lt 3 ] && sleep 100
+          done
