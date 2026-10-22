@@ -7,6 +7,12 @@ const TO_KMH = { "km/h": 1, "kmh": 1, "m/s": 3.6, "mph": 1.609344, "kts": 1.852,
 const n = v => { const x = parseFloat(String(v).replace(",", ".")); return Number.isFinite(x) ? x : null; };
 
 export function parseVd8(j) {
+  if (j && j.data !== undefined && j.wspeed === undefined) {       // long-poll wrapper: {timestamp, status, data:{...}}
+    let d = j.data;
+    if (typeof d === "string") { try { d = JSON.parse(d); } catch { throw new Error("vd8: data is not JSON, starts with: " + d.slice(0, 120)); } }
+    if (!d || typeof d !== "object") throw new Error("vd8: empty data, status=" + j.status + ", keys=" + Object.keys(j));
+    j = d;
+  }
   const f = TO_KMH[String(j.windunit || "km/h").trim().toLowerCase()] ?? 1;
   const avg = n(j.wspeed), gust = n(j.wgust), dir = n(j.avgbearing ?? j.bearing);
   if (avg == null) throw new Error("no wspeed in file; keys: " + Object.keys(j).slice(0, 30).join(","));
@@ -22,7 +28,7 @@ if (process.argv[1] && process.argv[1].endsWith("scrape-vd8.mjs")) {
   const out = process.argv[2] || "vd8.json";
   const BASE = "http://www.vd8.ch/meteo/";                  // the site only works over http (its https certificate is for another host)
   const UA = { "user-agent": "Mozilla/5.0 swiss-wind-map (personal, low rate)" };
-  const get = async (u) => { const r = await fetch(u, { headers: UA, redirect: "follow" }); if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); };
+  const get = async (u) => { const r = await fetch(u, { headers: UA, redirect: "follow", signal: AbortSignal.timeout(25000) }); if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); };
   const notes = []; let text;
   // The gauges page names its data file in scripts/gauges.js (realTimeURL); read it instead of guessing.
   const cands = [];
