@@ -1,0 +1,40 @@
+winds.mobi: 70 tiles (0 failed), 384 stations kept; by provider {"ffvl.fr":134,"holfuy.com":200,"windspots.com":14,"iweathar.co.za":2,"windline.ch":6,"windball.ch":9,"pgsonda.cz":3,"fluggruppe-aletsch.ch":9,"gxaircom.net":2,"pdcs.ch":2,"thunerwetter.ch":1,"kachelmannwetter.com":1,"wunderground.com":1}
+2026-10-24T20:53:57.918Z SWISS meteoswiss=151/159 openwindmap=106 slf=191 metar=16 winds.mobi=384 failed: slf SCH2:HTTP 404; slf GUT1:HTTP 404; slf BOV2:HTTP 404; slf GUT2:HTTP 404; slf SAA4:HTTP 404; slf GON2:HTTP 404; slf BOV1:HTTP 404; slf GAD2:HTTP 404
+2026-10-24T20:53:58.901Z YVBEACH {"id":"YVBEACH","ts":1792875000000,"avg":5.5,"gust":17.7,"dir":235,"temp":8.3,"pressure":1020.9}
+gauges.js: realTimeUrlLongPoll: 'realtimegauges-longpoll.php',     // *** ALL Users: If using long polling, change to your location of the PHP long poll realtime file ***
+gauges.js: realTimeUrlCumulus : 'realtimegauges.txt',     // *** Cumulus Users: Change to your location of the realtime file ***
+gauges.js: realTimeUrlWD      : 'customclientraw.txt',    // *** WD Users: Change to your location of the ccr file ***
+gauges.js: realTimeUrlVWS     : 'steelseriesVWSjson.php', // *** VWS Users: Change to your location of the JSON script generator ***
+gauges.js: realTimeUrlWC      : 'realtimegaugesWC.txt',   // *** WeatherCat Users: Change to your location of the JSON script generator ***
+gauges.js: realTimeUrlMB      : 'MBrealtimegauges.txt',   // *** Meteobridge Users: Change to the location of the JSON file
+gauges.js: realTimeUrlWView   : 'customclientraw.txt',    // *** WView Users: Change to your location of the customclientraw.txt file ***
+gauges.js: realTimeUrlWeewx   : 'WD/gauge-data.txt',         // *** WeeWX Users: Change to your location of the gauge data file ***
+gauges.js: realTimeUrlWLCOM   : 'WLrealtimegauges.php',   // *** WLCOM Users: change to location of WLCOMtags.php file ***
+gauges.js: dashboardMode      : false,                  // Used by Cumulus MX dashboard - SET TO FALSE OTHERWISE
+gauges.js: init = function (dashboard) {
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlCumulus;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWD;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlVWS;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWC;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlMB;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWView;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWeewx;
+gauges.js: config.realTimeURL = config.realTimeUrlWLCOM;
+gauges.js: config.realtimeURL = null;
+gauges.js: if (!dashboard) {
+gauges.js: var url = config.realTimeURL;
+gauges.js: dataType: 'json',
+gauges.js: statusScroller.setText('Your ' + config.realTimeURL.substr(config.realTimeURL.lastIndexOf('/') + 1) + ' file template needs updating!');
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php?timestamp=0 -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php?timestamp=1&_=1792875239929 -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php?timestamp=0 -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php?timestamp=1&_=1792875239929 -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/WD/gauge-data.txt -> {"BearingRangeFrom10":"209","BearingRangeTo10":"246","CurrentSolarMax":"0","LastRainTipISO":"00:00","SensorContactLost":"0","SolarRad":"0","SolarTM":"0","TapptempTH":"17:08","TapptempTL":"12:15","Tbeaufort":"1","TdewpointTH":"13:24","TdewpointTL":"03:34","Thea
+vd8: using http://www.vd8.ch/meteo/WD/gauge-data.txt
+2026-10-24T20:54:01.964Z VD8 {"id":"VD8","ts":1792875182000,"avg":4.8,"gust":9.7,"dir":225,"temp":7.8,"pressure":1019.5}
+2026-10-24T20:54:03.761Z ICHTUS [{"id":"ICHTUS","ts":1792875240000,"avg":20.7424,"dir":260,"gust":35.373200000000004,"temp":9.4,"pressure":1018.9},{"id":"CVN","ts":1792875240000,"avg":17.594,"dir":243,"gust":20.001600000000003}]
+discovered API key: ff90… (32 chars)
+2026-10-24T20:54:08.511Z IVAUD1:22.4 IPRVER1:0 IVAUDSTS2:22.4
+history: +7 latest readings, 823 stations tracked
