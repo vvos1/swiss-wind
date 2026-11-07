@@ -1,0 +1,122 @@
+winds.mobi: 70 tiles (0 failed), 382 stations kept; by provider {"ffvl.fr":133,"holfuy.com":199,"windspots.com":14,"iweathar.co.za":2,"windline.ch":6,"windball.ch":9,"pgsonda.cz":3,"fluggruppe-aletsch.ch":9,"pdcs.ch":2,"thunerwetter.ch":1,"gxaircom.net":2,"kachelmannwetter.com":1,"wunderground.com":1}
+2026-11-07T15:51:23.602Z SWISS meteoswiss=151/158 openwindmap=107 slf=199 metar=16 winds.mobi=382 failed: slf SCH2:HTTP 404; slf OTT2:HTTP 404
+2026-11-07T15:51:25.013Z YVBEACH {"id":"YVBEACH","ts":1794066600000,"avg":0,"gust":4.8,"dir":96,"temp":11.1,"pressure":1022.9}
+gauges.js: realTimeUrlLongPoll: 'realtimegauges-longpoll.php',     // *** ALL Users: If using long polling, change to your location of the PHP long poll realtime file ***
+gauges.js: realTimeUrlCumulus : 'realtimegauges.txt',     // *** Cumulus Users: Change to your location of the realtime file ***
+gauges.js: realTimeUrlWD      : 'customclientraw.txt',    // *** WD Users: Change to your location of the ccr file ***
+gauges.js: realTimeUrlVWS     : 'steelseriesVWSjson.php', // *** VWS Users: Change to your location of the JSON script generator ***
+gauges.js: realTimeUrlWC      : 'realtimegaugesWC.txt',   // *** WeatherCat Users: Change to your location of the JSON script generator ***
+gauges.js: realTimeUrlMB      : 'MBrealtimegauges.txt',   // *** Meteobridge Users: Change to the location of the JSON file
+gauges.js: realTimeUrlWView   : 'customclientraw.txt',    // *** WView Users: Change to your location of the customclientraw.txt file ***
+gauges.js: realTimeUrlWeewx   : 'WD/gauge-data.txt',         // *** WeeWX Users: Change to your location of the gauge data file ***
+gauges.js: realTimeUrlWLCOM   : 'WLrealtimegauges.php',   // *** WLCOM Users: change to location of WLCOMtags.php file ***
+gauges.js: dashboardMode      : false,                  // Used by Cumulus MX dashboard - SET TO FALSE OTHERWISE
+gauges.js: init = function (dashboard) {
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlCumulus;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWD;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlVWS;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWC;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlMB;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWView;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWeewx;
+gauges.js: config.realTimeURL = config.realTimeUrlWLCOM;
+gauges.js: config.realtimeURL = null;
+gauges.js: if (!dashboard) {
+gauges.js: var url = config.realTimeURL;
+gauges.js: dataType: 'json',
+gauges.js: statusScroller.setText('Your ' + config.realTimeURL.substr(config.realTimeURL.lastIndexOf('/') + 1) + ' file template needs updating!');
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php?timestamp=0 -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php?timestamp=1&_=1794066686015 -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php?timestamp=0 -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php?timestamp=1&_=1794066686015 -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/WD/gauge-data.txt -> {"BearingRangeFrom10":"0","BearingRangeTo10":"0","CurrentSolarMax":"0","LastRainTipISO":"00:00","SensorContactLost":"0","SolarRad":"0","SolarTM":"0","TapptempTH":"16:19","TapptempTL":"07:45","Tbeaufort":"0","TdewpointTH":"11:29","TdewpointTL":"05:43","Theatind
+vd8: using http://www.vd8.ch/meteo/WD/gauge-data.txt
+2026-11-07T15:51:28.081Z VD8 {"id":"VD8","ts":1794066661000,"avg":0,"gust":0,"dir":0,"temp":10.5,"pressure":1021.7}
+2026-11-07T15:51:30.138Z ICHTUS [{"id":"ICHTUS","ts":1794066660000,"avg":0,"dir":238,"gust":0,"temp":10.6,"pressure":1021.6},{"id":"CVN","ts":1794066660000,"avg":3.5188,"dir":208,"gust":4.074400000000001},{"id":"CUDREFIN","ts":1794066660000,"avg":4.2596,"dir":200,"gust":6.482}]
+file:///home/runner/work/swiss-wind/swiss-wind/wu-feed/wu-core.mjs:42
+  throw new Error(`No working API key found (${tested.size} candidates tried). Set WU_API_KEY instead.`);
+        ^
+
+Error: No working API key found (1 candidates tried). Set WU_API_KEY instead.
+    at discoverKey (file:///home/runner/work/swiss-wind/swiss-wind/wu-feed/wu-core.mjs:42:9)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///home/runner/work/swiss-wind/swiss-wind/wu-feed/scrape-wu.mjs:9:9
+
+Node.js v22.23.4
+IVAUDSTS2: api calls seen: 
+  200 https://api.weather.com/v2/tiler/info?products=radarCombined:radarCombined&apiKey=…&meta=true
+  200 https://api.weather.com/v2/tiler/info?products=radarFcstCombinedV3:radarFcstCombinedV3&apiKey=…&meta=true
+  200 https://api.weather.com/v2/vector-api/products/614/info?apiKey=…&meta=true
+  204 https://api.weather.com/v2/pws/observations/all/1day?stationId=IVAUDSTS2&units=e&format=json&numericPrecision=decimal&apiKey=…
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794066300000-1794067200000:8&x=1061&y=724&lod=12&apiKey=…&tile-size=512&declutter=t
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794066300000-1794067200000:8&x=1062&y=724&lod=12&apiKey=…&tile-size=512&declutter=t
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794065400000-1794066300000:24&x=1060&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794065400000-1794066300000:24&x=1061&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794065400000-1794066300000:24&x=1062&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794066300000-1794067200000:8&x=1060&y=724&lod=12&apiKey=…&tile-size=512&declutter=t
+  204 https://api.weather.com/v2/pws/observations/current?stationId=IVAUDSTS2&numericPrecision=decimal&format=json&units=e&extraVars=1&apiKey=…
+  404 https://api.weather.com/v3/location/point?pws=IVAUDSTS2&locationType=pws&language=en-US&format=json&apiKey=…
+2026-11-07T15:52:15.591Z IVAUD1:0 IPRVER1:0 IVAUDSTS2:err(no observation seen)
+history: +7 latest readings, 831 stations tracked
+2026-11-07T15:53:58.013Z YVBEACH {"id":"YVBEACH","ts":1794066600000,"avg":0,"gust":4.8,"dir":96,"temp":11.1,"pressure":1022.9}
+gauges.js: realTimeUrlLongPoll: 'realtimegauges-longpoll.php',     // *** ALL Users: If using long polling, change to your location of the PHP long poll realtime file ***
+gauges.js: realTimeUrlCumulus : 'realtimegauges.txt',     // *** Cumulus Users: Change to your location of the realtime file ***
+gauges.js: realTimeUrlWD      : 'customclientraw.txt',    // *** WD Users: Change to your location of the ccr file ***
+gauges.js: realTimeUrlVWS     : 'steelseriesVWSjson.php', // *** VWS Users: Change to your location of the JSON script generator ***
+gauges.js: realTimeUrlWC      : 'realtimegaugesWC.txt',   // *** WeatherCat Users: Change to your location of the JSON script generator ***
+gauges.js: realTimeUrlMB      : 'MBrealtimegauges.txt',   // *** Meteobridge Users: Change to the location of the JSON file
+gauges.js: realTimeUrlWView   : 'customclientraw.txt',    // *** WView Users: Change to your location of the customclientraw.txt file ***
+gauges.js: realTimeUrlWeewx   : 'WD/gauge-data.txt',         // *** WeeWX Users: Change to your location of the gauge data file ***
+gauges.js: realTimeUrlWLCOM   : 'WLrealtimegauges.php',   // *** WLCOM Users: change to location of WLCOMtags.php file ***
+gauges.js: dashboardMode      : false,                  // Used by Cumulus MX dashboard - SET TO FALSE OTHERWISE
+gauges.js: init = function (dashboard) {
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlCumulus;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWD;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlVWS;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWC;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlMB;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWView;
+gauges.js: config.realTimeURL = config.longPoll ? config.realTimeUrlLongPoll : config.realTimeUrlWeewx;
+gauges.js: config.realTimeURL = config.realTimeUrlWLCOM;
+gauges.js: config.realtimeURL = null;
+gauges.js: if (!dashboard) {
+gauges.js: var url = config.realTimeURL;
+gauges.js: dataType: 'json',
+gauges.js: statusScroller.setText('Your ' + config.realTimeURL.substr(config.realTimeURL.lastIndexOf('/') + 1) + ' file template needs updating!');
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php?timestamp=0 -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/realtimegauges-longpoll.php?timestamp=1&_=1794066838838 -> {"timestamp":0,"status":"Realtime file [\/is\/htdocs\/wp12224700_JDRETAPB8O\/www\/\/realtimegauges.txt] not found","data":"{}"}
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php?timestamp=0 -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/steelseriesVWSjson.php?timestamp=1&_=1794066838838 -> {"date":"", "dateFormat":"m/d/y", "temp":"", "tempTL":"", "tempTH":"", "intemp":"", "dew":"", "dewpointTL":"", "dewpointTH":"", "apptemp":"", "apptempTL":"0.0", "apptempTH":"0.0", "wchill":"", "wchillTL":"", "heatindex":"", "heatindexTH":"", "humidex":"22", "w
+vd8 raw http://www.vd8.ch/meteo/WD/gauge-data.txt -> {"BearingRangeFrom10":"0","BearingRangeTo10":"0","CurrentSolarMax":"0","LastRainTipISO":"00:00","SensorContactLost":"0","SolarRad":"0","SolarTM":"0","TapptempTH":"16:19","TapptempTL":"07:45","Tbeaufort":"0","TdewpointTH":"11:29","TdewpointTL":"05:43","Theatind
+vd8: using http://www.vd8.ch/meteo/WD/gauge-data.txt
+2026-11-07T15:54:00.907Z VD8 {"id":"VD8","ts":1794066781000,"avg":0,"gust":0,"dir":0,"temp":10.4,"pressure":1021.6}
+2026-11-07T15:54:02.813Z ICHTUS [{"id":"ICHTUS","ts":1794066780000,"avg":0,"dir":238,"gust":0,"temp":10.6,"pressure":1021.6},{"id":"CVN","ts":1794066780000,"avg":3.1484,"dir":208,"gust":4.074400000000001},{"id":"CUDREFIN","ts":1794066780000,"avg":4.2596,"dir":200,"gust":6.482}]
+file:///home/runner/work/swiss-wind/swiss-wind/wu-feed/wu-core.mjs:42
+  throw new Error(`No working API key found (${tested.size} candidates tried). Set WU_API_KEY instead.`);
+        ^
+
+Error: No working API key found (1 candidates tried). Set WU_API_KEY instead.
+    at discoverKey (file:///home/runner/work/swiss-wind/swiss-wind/wu-feed/wu-core.mjs:42:9)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///home/runner/work/swiss-wind/swiss-wind/wu-feed/scrape-wu.mjs:9:9
+
+Node.js v22.23.4
+IVAUDSTS2: api calls seen: 
+  204 https://api.weather.com/v2/pws/observations/all/1day?stationId=IVAUDSTS2&units=e&format=json&numericPrecision=decimal&apiKey=…
+  200 https://api.weather.com/v2/tiler/info?products=radarFcstCombinedV3:radarFcstCombinedV3&apiKey=…&meta=true
+  200 https://api.weather.com/v2/tiler/info?products=radarCombined:radarCombined&apiKey=…&meta=true
+  200 https://api.weather.com/v2/vector-api/products/614/info?apiKey=…&meta=true
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794066300000-1794067200000:10&x=1060&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794065400000-1794066300000:26&x=1062&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794066300000-1794067200000:10&x=1061&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794065400000-1794066300000:26&x=1060&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794065400000-1794066300000:26&x=1061&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  200 https://api.weather.com/v2/vector-api//products/614/features?time=1794066300000-1794067200000:10&x=1062&y=724&lod=12&apiKey=…&tile-size=512&declutter=
+  204 https://api.weather.com/v2/pws/observations/current?stationId=IVAUDSTS2&numericPrecision=decimal&format=json&units=e&extraVars=1&apiKey=…
+  404 https://api.weather.com/v3/location/point?pws=IVAUDSTS2&locationType=pws&language=en-US&format=json&apiKey=…
+2026-11-07T15:54:33.491Z IVAUD1:0 IPRVER1:0 IVAUDSTS2:err(no observation seen)
+history: +7 latest readings, 831 stations tracked
